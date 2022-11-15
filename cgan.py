@@ -190,7 +190,7 @@ class TeethGenerator(nn.Module):
     ):
         if not input_is_latent:
             styles = [self.style(s) for s in styles]
-            print(styles[0].shape, len(styles))
+            # print(styles[0].shape, len(styles))
 
         if noise is None:
             if randomize_noise:
@@ -211,12 +211,12 @@ class TeethGenerator(nn.Module):
             styles = style_t
 
         if len(styles) < 2:
-            print('a')
+            # print('a')
             inject_index = self.n_latent
 
             if styles[0].ndim < 3:
                 # print('aa')
-                latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+                latent = styles[0].unsqueeze(1).repeat(real_image.shape[0], inject_index, 1)
 
             else:
                 # print('ab')
@@ -225,10 +225,11 @@ class TeethGenerator(nn.Module):
         else:
             # print('b')
             if inject_index is None:
-                # inject_index = random.randint(1, self.n_latent - 1)
-                inject_index = 12
+                inject_index = random.randint(1, self.n_latent - 1)
+                # inject_index = 1
 
-            latent = styles[0][:, :inject_index, :]
+            # latent = styles[0][:, :inject_index, :]
+            latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
             latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
 
             latent = torch.cat([latent, latent2], 1)

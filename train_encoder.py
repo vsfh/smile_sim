@@ -149,8 +149,8 @@ class PSP(pl.LightningModule):
         self.id_loss = id_loss.IDLoss().to(self.device).eval()
         # self.moco_loss = moco_loss.MocoLoss().to(self.device).eval()
 
-        self.id_lambda = 0
-        self.lpips_lambda = 0.8
+        self.id_lambda = 0.0
+        self.lpips_lambda = 0.08
         self.w_norm_lambda = 0.
         self.w_norm_lambda = 0.0
         self.l2_lambda = 1.0
@@ -162,7 +162,7 @@ class PSP(pl.LightningModule):
         
         codes = self.psp_encoder(real_img)
         if mix:
-            sample_z = self.decoder.style(torch.randn((1,512)).cuda()*0.12)
+            sample_z = self.decoder.style(torch.randn((1,512)).cuda()*0.0012)
             codes = [codes, sample_z]
         else:
             codes = [codes]
@@ -219,7 +219,7 @@ class PSP(pl.LightningModule):
         loss, loss_dict, id_logs = self.calc_loss(x, y , y_hat , latent)
         utils.save_image(
             y_hat,
-            f"/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_sample/{mode}.png",
+            f"/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/encoder_sample/{mode}.png",
             nrow=2,
             normalize=True,
             range=(-1, 1),
@@ -241,12 +241,12 @@ class PSP(pl.LightningModule):
 
     def on_epoch_end(self):
         self.epoch_index += 1
-        torch.save(self.psp_encoder.state_dict(), os.path.join('/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt',f'{self.epoch_index}.pkl'))
+        torch.save(self.psp_encoder.state_dict(), os.path.join('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/encoder_ckpt',f'{self.epoch_index}.pkl'))
 
     def configure_optimizers(self):
         from torch.optim import AdamW
         self.requires_grad(self.decoder, False)
-        opt = AdamW(self.psp_encoder.parameters(), lr=0.0001)
+        opt = AdamW(self.psp_encoder.parameters(), lr=0.00005)
         return opt
     
     @staticmethod
@@ -278,7 +278,7 @@ if __name__ == '__main__':
     from pytorch_lightning import Trainer
 
     name = 'no_condition_encoder'
-    ckpt = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/040000.pt'
+    ckpt = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/080000.pt'
 
     pl_model = PSP(256, 512, ckpt=ckpt)
     accelerator = None

@@ -191,8 +191,47 @@ def upper_gums():
         cv2.imshow('inner', part_face)
         cv2.waitKey(0)
 
+def batch_seg(path):
+    from test import Yolo, Segmentation, sigmoid
+    from utils import loose_bbox
 
+    seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
+    img_dir = os.path.join(path,'smile_6000')
+    for file in os.listdir(img_dir)[:2000]:
+        img_path = os.path.join(img_dir,file)
+        image = cv2.imread(img_path)
+        image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        result = seg.predict(image)
+        mask = (result[..., 0] > 0.6).astype(np.uint8)*255
+        img_name = img_path.split('/')[-1].split('_')[0]
+        print(img_name)
+        os.makedirs(os.path.join(path,'seg_6000',img_name), exist_ok=True)
+        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'mouth.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'MouthMask.png'), mask)
+        # break
+        
+def mask_filter(path):
+    import cv2
+    import numpy as np
+    import skimage.exposure
+
+    for img_name in os.listdir(os.path.join(path,'seg_6000')):
+        print(img_name)
+        img = cv2.imread(os.path.join(path,'seg_6000',img_name,'MouthMask.png'))
+
+        # blur threshold image
+        blur = cv2.GaussianBlur(img, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
+
+        result = skimage.exposure.rescale_intensity(blur, in_range=(127.5,255), out_range=(0,255))
+
+        # save output
+        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'mask_filtered.png'), result)
+        # image = Image.open()
+        # image = image.filter(ImageFilter.ModeFilter(size=13))
+        # image.save()
+    
 if __name__ == '__main__':
     # segmentation('a')
-    upper_gums()
+    # upper_gums()
     # label_check()
+    mask_filter('/mnt/share/shenfeihong/data/smile_')

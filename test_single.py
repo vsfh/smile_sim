@@ -8,19 +8,22 @@ import torch.distributed as dist
 from torchvision import transforms, utils
 from test import Yolo, Segmentation, sigmoid
 from utils import loose_bbox
+import onnxruntime
+sess = onnxruntime.InferenceSession('model_single.onnx',
+                                    providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider',
+                                            'CPUExecutionProvider']) 
+yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
+seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
+save_path = '/mnt/share/shenfeihong/data/test/11.9.2022.res'
 
-ckpt_encoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt/3.pkl'
-ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/040000.pt'
+ckpt_encoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt/1.pkl'
+ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/100000.pt'
 psp = PSP(256,512,8).cuda()
 ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
 ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
 psp.decoder.load_state_dict(ckpt_decoder_["g_ema"])
 psp.psp_encoder.load_state_dict(ckpt_encoder_)
-yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
-seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
-save_path = '/mnt/share/shenfeihong/data/test/11.9.2022.res'
 def test_single_full(img_path):
-
 
     image = cv2.imread(img_path)
     image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
@@ -58,6 +61,44 @@ def test_single_full(img_path):
         normalize=True,
         range=(-1, 1),
     )
+def onnx_test(img_path):
+    image = cv2.imread(img_path)
+    image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    height, width = image.shape[:2]
+
+    objs = yolo.predict_with_argmax(image, show=False)
+
+    mouth_objs = objs[2]
+    x1, y1, x2, y2 = mouth_objs
+
+    w, h = (x2 - x1), (y2 - y1)
+
+    half = max(w, h) * 1.1 / 2
+
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    x1, y1, x2, y2 = cx - half, cy - half, cx + half, cy + half
+    x1, y1, x2, y2 = loose_bbox([x1, y1, x2, y2], (width, height))
+    x, y = int(x1 * 128 / half), int(y1 * 128 / half) + 2
+
+    image = cv2.resize(image, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
+    mouth = image[y: y + 256, x: x + 256]
+    result = seg.predict(mouth)
+
+    mask = (result[..., 0] > 0.6).astype(np.float32)
+    # big_mask = cv2.dilate(mask, kernel=np.ones((2, 2)))
+    big_mask = mask
+    mask = cv2.dilate(mask, kernel=np.ones((30, 30)))-big_mask
+
+    mask = mask.astype(np.float32)[None][None]
+    big_mask = big_mask.astype(np.float32)[None][None]  
+    img = mouth/255*2-1
+    img = img.transpose(2,0,1).astype(np.float32)[None]
+  
+    align_img = sess.run([], {'input_image':img,'mask':mask,'big_mask':big_mask}) 
+    align_img = align_img[0][0].transpose(1,2,0)*255/2+255/2
+    image[y: y + 256, x: x + 256] = align_img.clip(0,255)
+    cv2.imwrite(f"{save_path}/{img_path.split('/')[-1]}", cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+    
 import os
 path = '/mnt/share/shenfeihong/data/test/11.8.2022'
 for file in os.listdir(path):

@@ -10,7 +10,15 @@ from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import glob
+import torch
 
+def flip(x, dim):
+    xsize = x.size()
+    dim = x.dim() + dim if dim < 0 else dim
+    x = x.view(-1, *xsize[dim:])
+    x = x.view(x.size(0), x.size(1), -1)[:, getattr(torch.arange(x.size(1)-1, 
+                      -1, -1), ('cpu','cuda')[x.is_cuda])().long(), :]
+    return x.view(xsize)
 class MultiResolutionDataset(Dataset):
     def __init__(self, path, transform, resolution=256):
         self.env = lmdb.open(
@@ -436,15 +444,24 @@ class SimulationDataset(Dataset):
 class fuck(Dataset):
     def __init__(self, mode='decoder'):
         if mode == 'encoder':
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/smile_6000_seg/*/mouth.png', recursive=False)[10:]
+            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg', recursive=False)[10:]
+            self.transform = transforms.Compose(
+                                [
+                                    transforms.Resize([256,256]),
+                                    transforms.ToTensor(),
+                                    # transforms.RandomHorizontalFlip(p=0.5)
+                                    
+                                ]
+                        )       
         else:
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/TrainDataOld/Teeth/*/Img.jpg', recursive=False)[10:]
+            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg', recursive=False)[10:]
 
-        self.transform = transforms.Compose(
-                            [
-                                transforms.Resize([256,256]),
-                                transforms.ToTensor()
-                            ]
+            self.transform = transforms.Compose(
+                                [
+                                    transforms.Resize([256,256]),
+                                    transforms.ToTensor()
+                                    
+                                ]
                         )
         print('total image:', len(self.all_files))
         self.mode = mode
@@ -456,9 +473,11 @@ class fuck(Dataset):
         frame_file = self.all_files[index]
         f_name = frame_file.split('/')[-1]
         if self.mode == 'encoder':
-            ske_file = frame_file.replace(f_name,'MouthMask.png')
+            ske_file = frame_file.replace(f_name,'mask_filtered.png')
+            inner = 0
         else:
             ske_file = frame_file.replace(f_name,'MouthMask.png')
+            inner = np.random.randint(5)
         
         frame = Image.open(frame_file)
         mask = Image.open(ske_file)
@@ -466,14 +485,17 @@ class fuck(Dataset):
         mask = np.array(mask)/255
         if len(mask.shape) == 3:
             mask = mask[...,0]
-        inner = np.random.randint(5)
-        mask = cv2.dilate(mask, kernel=np.ones((30, 30)))-cv2.dilate(mask, kernel=np.ones((inner, inner)))
+
+        mask = cv2.dilate(mask, kernel=np.ones((30+inner, 30+inner)))-cv2.dilate(mask, kernel=np.ones((inner, inner)))
         big_mask = cv2.dilate(mask, kernel=np.ones((inner, inner)))
         mask = mask.astype(np.float32)[None]
         big_mask = big_mask.astype(np.float32)[None]
         
         img = self.transform(frame)*2-1
-        # cond = self.transform(ske)
+        if np.random.randint(2)>0:
+            img = flip(img,2)
+            mask = mask[:,:,::-1].copy()
+            big_mask = big_mask[:,:,::-1].copy()
         return {'images': img, 'mask':mask, 'big_mask':big_mask}
     
 if __name__ == '__main__':
