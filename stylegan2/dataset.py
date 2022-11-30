@@ -2,7 +2,7 @@ from io import BytesIO
 
 from PIL import Image
 
-from torch.utils.data import Dataset
+
 import cv2
 import numpy as np
 import os
@@ -454,7 +454,9 @@ class fuck(Dataset):
                                 ]
                         )       
         else:
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg', recursive=False)[10:]
+            self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
+            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/mouth_seg/*/mouth.jpg')[:3000]+\
+                                glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')
 
             self.transform = transforms.Compose(
                                 [
@@ -486,17 +488,96 @@ class fuck(Dataset):
         if len(mask.shape) == 3:
             mask = mask[...,0]
 
-        mask = cv2.dilate(mask, kernel=np.ones((30+inner, 30+inner)))-cv2.dilate(mask, kernel=np.ones((inner, inner)))
-        big_mask = cv2.dilate(mask, kernel=np.ones((inner, inner)))
-        mask = mask.astype(np.float32)[None]
-        big_mask = big_mask.astype(np.float32)[None]
+        # mask = cv2.dilate(mask, kernel=np.ones((30+inner, 30+inner)))-cv2.dilate(mask, kernel=np.ones((inner, inner)))
+        # big_mask = cv2.dilate(mask, kernel=np.ones((inner, inner)))
+        # mask = mask.astype(np.float32)[None]
+        # big_mask = big_mask.astype(np.float32)[None]
+        cir_mask = cv2.dilate(mask, kernel=np.ones((20+inner, 20+inner)))-cv2.dilate(mask, kernel=np.ones((inner, inner)))
+        cir_mask = cir_mask.astype(np.float32)[None]
         
+        big_mask = cv2.dilate(mask, kernel=np.ones((inner, inner)))
+        big_mask = mask.astype(np.float32)[None]
+        
+        ##edge
+        fdir = frame_file.split('/')[-3]
+        if (fdir=='seg_6000'):
+            edge = Image.open(frame_file.replace(f_name,'edge.png'))
+        else:
+            edge = Image.open(frame_file.replace(f_name,'TeethEdge.png'))
+        edge = np.array(edge)/255
+        if len(edge.shape) == 3:
+            edge = edge[...,0]
+
+        edge = edge.astype(np.float32)[None]
+                
         img = self.transform(frame)*2-1
         if np.random.randint(2)>0:
             img = flip(img,2)
-            mask = mask[:,:,::-1].copy()
+            cir_mask = cir_mask[:,:,::-1].copy()
             big_mask = big_mask[:,:,::-1].copy()
-        return {'images': img, 'mask':mask, 'big_mask':big_mask}
+            edge = edge[:,:,::-1].copy()
+        return {'images': img, 'mask':cir_mask, 'big_mask':big_mask, 'edge':edge}
+
+def mask_proc(mask, dilate=True):
+        if dilate:
+            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+            res = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = res[-2]
+            cv2.fillPoly(mask,pts=contours,color=(255,255,255))
+        mask = np.array(mask)/255
+        if len(mask.shape) == 3:
+            mask = mask[...,0]
+
+        return mask.astype(np.float32)[None]
+    
+from natsort import natsorted
+class edge(Dataset):
+    def __init__(self, mode='train'):
+        if mode=='train':
+            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/face_seg_22_11_25/*/mouth.png', recursive=False))
+        else:
+            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/face_seg_22_11_25/*/mouth.png', recursive=False))[:40]
+        print('total image:', len(self.all_files))
+
+    def __len__(self):
+        return len(self.all_files)
+    
+    def __getitem__(self, index):
+        ori_file = self.all_files[index]
+        
+        mask_file = ori_file.replace('mouth','mask')
+        up_edge_file = ori_file.replace('mouth','up_edge')
+        down_edge_file = ori_file.replace('mouth', 'down_edge')
+        
+        up_edge = mask_proc(cv2.imread(up_edge_file))
+        down_edge = mask_proc(cv2.imread(down_edge_file))
+        
+        down_edge[up_edge>0]=0
+        
+        if os.path.exists(mask_file):
+            mask = cv2.imread(mask_file)
+            mask = mask_proc(mask, dilate=False)
+        else:
+            mask = np.ones_like(edge)
+            
+        if np.random.randint(2)>0:
+            mask = mask[:,:,::-1].copy()
+            up_edge = up_edge[:,:,::-1].copy()
+            down_edge = down_edge[:,:,::-1].copy()
+            
+        return {'mask': mask, 'down_edge':down_edge, 'up_edge':up_edge}
+       
+def get_loader_unet(mode='train'):
+    dataset = edge(mode)
+    loader = DataLoader(
+        dataset=dataset,
+        batch_size=16,
+        num_workers=4,
+        shuffle=True,
+        drop_last=True,
+        pin_memory=True,
+    )
+    return loader
     
 if __name__ == '__main__':
     # ds = SmileDataset(r'C:\data\smile_synthesis\smile_segmap', None)
@@ -520,4 +601,5 @@ if __name__ == '__main__':
         # # cv2.imshow('tmp', input_semantic[:3].transpose(1,2,0))
         cv2.imshow('img', ((images+1)/2).numpy().transpose(1,2,0))
         cv2.waitKey(0)
+
 

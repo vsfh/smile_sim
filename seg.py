@@ -121,10 +121,10 @@ def detec():
     rnet1 = ONNXModel(r_model_path)
     base_path = '/home/vsfh/dataset/a_down'
     file_list = os.listdir(base_path)
-    for idx in range(1):
-        file = file_list[idx]
+    for file in file_list:
+        # file = file_list[idx]
         file_path = os.path.join(base_path, file)
-        part_face = cv2.imread('/home/vsfh/dataset/smile/C01002721732_smile.jpg')
+        part_face = cv2.imread(file_path)
         part_face = part_face[..., ::-1]
         img_input = (np.float32(part_face) / 255.0)
         img_input = img_input.transpose((2, 0, 1))
@@ -202,13 +202,14 @@ def batch_seg(path):
         image = cv2.imread(img_path)
         image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         result = seg.predict(image)
-        mask = (result[..., 0] > 0.6).astype(np.uint8)*255
+
+        mask = (result[..., 1] > 0.6).astype(np.uint8)*255
         img_name = img_path.split('/')[-1].split('_')[0]
         print(img_name)
         os.makedirs(os.path.join(path,'seg_6000',img_name), exist_ok=True)
-        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'mouth.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'MouthMask.png'), mask)
-        # break
+        # cv2.imwrite(os.path.join(path,'seg_6000',img_name,'mouth.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        # cv2.imwrite(os.path.join(path,'seg_6000',img_name,'MouthMask.png'), mask)
+        cv2.imwrite(os.path.join(path,'seg_6000',img_name,'edge.png'), mask)
         
 def mask_filter(path):
     import cv2
@@ -234,4 +235,4 @@ if __name__ == '__main__':
     # segmentation('a')
     # upper_gums()
     # label_check()
-    mask_filter('/mnt/share/shenfeihong/data/smile_')
+    batch_seg('/mnt/share/shenfeihong/data/smile_')

@@ -26,7 +26,7 @@ class Gen(nn.Module):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
         self.decoder = TeethGenerator(256, 512, n_mlp=8)
-        self.sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/test/_52.pth').cuda()
+        self.sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/test/_3.pth').cuda()
         # self.sample_z = torch.randn((1,512)).cuda()
 
     def forward(self, real_img, mask, big_mask):
@@ -56,7 +56,7 @@ def convert_to_onnx():
     ckpt_encoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt/3.pkl'
     ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/040000.pt'
     ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
-    ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
+    # ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
     model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
     # model.psp_encoder.load_state_dict(ckpt_encoder_)
     input_name = ['input_image','mask','big_mask']
@@ -149,4 +149,4 @@ def model_infer():
     align_img = model(img, mask, big_mask)
     align_img = align_img[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
     cv2.imwrite('img.jpg', cv2.cvtColor(align_img, cv2.COLOR_RGB2BGR).astype(np.uint8))
-onnx_infer()
+convert_to_onnx()
