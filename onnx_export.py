@@ -1,4 +1,5 @@
-from cgan import TeethGenerator
+# from cgan import TeethGenerator
+from edge_gan import TeethGenerator
 from encoders.psp_encoders import GradualStyleEncoder
 import torch
 import torch.nn as nn
@@ -10,12 +11,12 @@ class onnxmodel(nn.Module):
         self.decoder = TeethGenerator(256, 512, n_mlp=8)
         self.sample_z = torch.randn((1,512)).cuda()*0.12
 
-    def forward(self, real_img, mask, big_mask):
+    def forward(self, real_img, mask,edge, big_mask):
         
         codes = self.psp_encoder(real_img)
         sample_z = self.decoder.style(self.sample_z)
         codes = [codes,sample_z]
-        images, result_latent = self.decoder(codes, real_image=real_img, mask=mask,
+        images, result_latent = self.decoder(codes, real_image=real_img, mask=mask,edge=edge,
                                              input_is_latent=True,
                                              randomize_noise=False)
         images = real_img*(1-big_mask)+images*big_mask
@@ -25,15 +26,14 @@ class Gen(nn.Module):
     def __init__(self):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
-        self.decoder = TeethGenerator(256, 256, n_mlp=8)
-        self.sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/test/_42.pth').cuda()
+        self.decoder = TeethGenerator(256, 512, n_mlp=8).cuda()
+        sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge_test/pth/5.pth').cuda()
+        self.sample_z = [self.decoder.style(sample_z).detach()]
+
         # self.sample_z = torch.randn((1,512)).cuda()
 
-    def forward(self, real_img, mask, big_mask):
-        
-        sample_z = self.decoder.style(self.sample_z)
-        codes = [sample_z]
-        images,_ = self.decoder(codes, real_image=real_img, mask=mask,
+    def forward(self, real_img, mask,edge, big_mask):
+        images,_ = self.decoder(self.sample_z, real_image=real_img, mask=mask,edge=edge,
                                             input_is_latent=True,
                                             randomize_noise=False)
         images = real_img*(1-big_mask)+images*big_mask
@@ -52,16 +52,18 @@ def convert_to_onnx():
     input1 = torch.randn(1, 3, 256, 256).cuda()
     input2 = torch.randn(1, 1, 256, 256).cuda()
     input3 = torch.randn(1, 1, 256, 256).cuda()
+    input4 = torch.randn(1, 1, 256, 256).cuda()
+    
     model = Gen().eval().cuda()
     ckpt_encoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt/3.pkl'
-    ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.2/050000.pt'
+    ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/080000.pt'
     ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
     # ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
     model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
     # model.psp_encoder.load_state_dict(ckpt_encoder_)
-    input_name = ['input_image','mask','big_mask']
+    input_name = ['input_image','mask','edge','big_mask']
     output_name = ['align_img']
-    torch.onnx.export(model, (input1, input2, input3), output_path, export_params=True, input_names=input_name, output_names=output_name,
+    torch.onnx.export(model, (input1, input2, input3, input4), output_path, export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=13, dynamic_axes=dynamic_axes)
 import cv2
 import numpy as np

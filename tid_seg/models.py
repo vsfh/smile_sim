@@ -761,8 +761,9 @@ def parameter_pred(mouth, edgeu, edged, model):
     width_11 = np.mean(pos_right_11[int(len(pos_right_11)/3):int(len(pos_right_11)/3*2)])\
                -np.mean(pos_left_11[int(len(pos_left_11)/3):int(len(pos_left_11)/3*2)])
     # width_11 = np.max(right_11-left_11)
+    width_11 = width_11.clip(0,35)
 
-    camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width'])/camera_dict['z_change']
+    camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-3)/camera_dict['z_change']
     camera_y = (np.mean(down_11[down_11>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
     if np.sum(mask_11)<10:
         camera_x = ((np.max(left_11))-127)/camera_dict['y_change']

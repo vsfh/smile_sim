@@ -566,27 +566,22 @@ class edge(Dataset):
         
         mask = mask_proc(cv2.imread(mask_file))
         tid_seg = np.array(cv2.imread(tid_file))[...,0]
-        if (tid_seg<30).all():
-            contain_lower = 0
-        else:
-            contain_lower = 1
-            
-        upper_tid_seg = seg_proc(tid_seg,[11,21])
-        lower_tid_seg = seg_proc(tid_seg, [31,41])
+
+        label = np.zeros((2,256,256))
+        label[0][tid_seg==11]=1.0
+        label[1][tid_seg==21]=1.0
+        label.astype(np.float32)
+        
         img = Image.open(ori_file)
         img = self.transform(img)*2-1
             
         if np.random.randint(2)>0:
             mask = mask[:,:,::-1].copy()
             img = flip(img,2)
-            upper_tid_seg = upper_tid_seg[:,:,::-1].copy()
-            lower_tid_seg = lower_tid_seg[:,:,::-1].copy()
+            label = label[:,:,::-1].copy()
             up_edge = up_edge[:,:,::-1].copy()
-            down_edge = down_edge[:,:,::-1].copy()
-            
-            
-            
-        return {'mask': mask, 'up_edge':up_edge, 'down_edge':down_edge, 'mouth':img, 'label_up':upper_tid_seg, 'label_down':lower_tid_seg, 'lower':contain_lower}
+
+        return {'mask': mask, 'mouth':img, 'label':label, 'up_edge':up_edge}
        
 def get_loader_unet(size =1, mode='train'):
     dataset = edge(mode)

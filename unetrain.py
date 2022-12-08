@@ -12,6 +12,100 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
 
+class MultiConv(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int, num_layers: int):
+        super(MultiConv, self).__init__()
+        layers = [nn.Conv2d(in_ch, out_ch, (3, 3), (1, 1), 1), nn.ReLU(True)]
+        for i in range(num_layers - 1):
+            layers += [nn.Conv2d(out_ch, out_ch, (3, 3), (1, 1), 1), nn.ReLU(True)]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class DownBlock(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int, num_layers: int):
+        super(DownBlock, self).__init__()
+        layers = [nn.MaxPool2d((2, 2), (2, 2)),
+                  MultiConv(in_ch, out_ch, num_layers)]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class CenterBlock(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int):
+        super(CenterBlock, self).__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, (3, 3), (1, 1), 1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(True)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class UpBlock(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int):
+        super(UpBlock, self).__init__()
+        self.net = nn.Sequential(
+            CenterBlock(in_ch, out_ch),
+            CenterBlock(out_ch, out_ch)
+        )
+
+    def forward(self, x, skip=None):
+        x = F.interpolate(x, scale_factor=2, mode="nearest")
+        if skip is not None:
+            x = torch.cat([x, skip], dim=1)
+        return self.net(x)
+
+
+class SegmentationHead(nn.Module):
+    def __init__(self, in_ch: int, classes: int, pretrained=True):
+        super(SegmentationHead, self).__init__()
+        self.UpBlock = UpBlock(128, 64)
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, classes, (3, 3), (1, 1), 1),
+            nn.Sigmoid()
+        )
+        if not pretrained:
+            self.init_weight()
+
+    def forward(self, x, info=None):
+        x = self.UpBlock(x, None)
+        if info:
+            info.append(x)
+            x = torch.cat(info, dim=1)
+        return self.net(x)
+
+
+class UNet(nn.Module):
+    def __init__(self, num_layers=3):
+        super(UNet, self).__init__()
+        self.num_layers = num_layers
+        self.encoder = nn.ModuleList([MultiConv(3, 64, 2),
+                                      DownBlock(64, 128, 2),
+                                      DownBlock(128, 256, 2)])
+        self.center = nn.Sequential(
+            CenterBlock(256, 256))
+        self.decoder = nn.ModuleList([UpBlock(384, 128),
+                                    UpBlock(128, 2)])
+
+    def forward(self, x):
+        xi = [self.encoder[0](x)]
+        for layer in self.encoder[1: self.num_layers + 1]:
+            xi.append(layer(xi[-1]))
+        xi[-1] = self.center(xi[-1])
+        xi[0] = None
+        for i, layer in enumerate(self.decoder):
+            xi[-1] = layer(xi[-1], xi[-2 - i])
+        return xi[-1]
+
+
+    
 def toy():
     # renderer = render_init()
     # # seg = seg_model()
@@ -47,24 +141,22 @@ def toy():
     
     print('done')
 
-
+def model():
+    model = UNet()
+    print(model(torch.randn(3,3,256,256)).shape)
 def train():
     
     save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge'
     tensorboard_path = os.path.join(save_path, 'lightning_logs')
     os.makedirs(tensorboard_path, exist_ok=True)
     writer = SummaryWriter(tensorboard_path)
-    model = timm.create_model('efficientnetv2_l', in_chans=3, num_classes=6).cuda()
-    renderer = render_init()
-    val_renderer = render_init('val')
-    seg = None
-    file_path = '/mnt/share/shenfeihong/data/smile_/C01001659595'
-    upper, lower, mid = load_up_low(file_path, mode='T2', num_teeth=1)
-    upper = meshes_to_tensor(upper).cuda()
-    lower = meshes_to_tensor(lower).cuda()
+    model = UNet().cuda()
+    # ckpt = torch.load(os.path.join(save_path, '45.pt'))
+    # model.load_state_dict(ckpt)
+
     optimize = optim.AdamW(model.parameters(), lr = 0.0001)
 
-    dl = get_loader_unet(size=14, mode='train')
+    dl = get_loader_unet(size=4, mode='train')
     val_dl = get_loader_unet(size=1, mode='val')
     # iteration = iter(dl)
     for index in range(50):
@@ -74,38 +166,28 @@ def train():
 
             optimize.zero_grad()
             mouth = batch['mouth'].cuda()
-            mask = batch['mask'].cuda()
-            upper_tid_seg = batch['label_up'].cuda()
-            lower_tid_seg = batch['label_down'].cuda()
-            
             up_edge = batch['up_edge'].cuda()
-            down_edge = batch["down_edge"].cuda()
-            
-            exist = batch['lower'].cuda().unsqueeze(-1)
+            mask = batch['mask'].cuda()
+            label = batch['label'].type(torch.float32).cuda()
             
             zero_ = torch.tensor([0]).unsqueeze(0).repeat(mask.shape[0],1).cuda()
 
-            output = model(mouth*mask-up_edge-down_edge)
-            dist_up = torch.cat((zero_,zero_,output[:,4:5]),1)
-            dist_down = torch.cat((zero_,zero_,output[:,3:4]*exist),1)
-            angle = torch.cat((zero_-1.396,zero_,zero_),1)
-            movement = torch.cat((output[:,0:1],output[:,1:2],output[:,2:3]*10+470),1)
-
+            output = model(mouth - up_edge)
             
-            deepmap_upper, deepmap_lower = render_(renderer, upper, lower, mid, mask, angle, movement, [dist_up,dist_down])
-
-            loss = F.mse_loss(upper_tid_seg, deepmap_upper)+0.1*F.mse_loss(lower_tid_seg, deepmap_lower)
+            loss = F.mse_loss(output, label)-torch.sum(torch.abs(label[:,0,:,:]-label[:,1,:,:]))
             loss.backward()
             optimize.step()
             writer.add_scalar('Loss/train', loss.item(), idx)
-            writer.add_image('Image/Input', torch.clip((mouth[0]+1)/2,min=0,max=1), idx)
-            gap = torch.zeros((3,256,256))
-            gap[0] = upper_tid_seg[0][0]
-            gap[1] = deepmap_upper[0][0]
-            writer.add_image('Image/Gap', gap, idx)
-            gap[0] = lower_tid_seg[0][0]
-            gap[1] = deepmap_lower[0][0]
-            writer.add_image('Image/GapDown', gap, idx)
+
+            # writer.add_image('Image/Gap', mouth[0], idx)
+            if not idx%100:
+                writer.add_image('Image/label0', label[0][:1], idx)
+                writer.add_image('Image/label1', label[0][1:], idx)
+                
+                writer.add_image('Image/output0', output[0][:1], idx)
+                writer.add_image('Image/output1', output[0][1:], idx)
+            
+            
             
             if False:
                 upper, lower, mid = load_up_low(file_path, mode='T2', num_teeth=4)
@@ -137,5 +219,5 @@ def train():
 
 if __name__=='__main__':
     # toy()
-    
+    # model()
     train()
