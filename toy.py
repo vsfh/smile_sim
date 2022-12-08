@@ -46,16 +46,16 @@ def noise():
 # torch.cuda.manual_seed(666)
 def test_single_full():
     from cgan import TeethGenerator
-    model = TeethGenerator(256, 512, 8).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/040000.pt', map_location=lambda storage, loc: storage)
+    model = TeethGenerator(256, 256, 8).cuda()
+    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.12.2/050000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     sample_dir = '/mnt/share/shenfeihong/data/test/11.8.2022'
     save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/test'
     for i in range(100):
-        sample_z = (torch.randn((1,512))*i/100).cuda()
-        sample_z = torch.load(f'{save_path}/_3.pth').cuda()
+        sample_z = torch.randn((1,256)).cuda()
+        # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
         for file in os.listdir(sample_dir):
             img_path = os.path.join(sample_dir,file)
             image = cv2.imread(img_path)
@@ -69,8 +69,8 @@ def test_single_full():
 
             w, h = (x2 - x1), (y2 - y1)
 
-            # half = max(w, h) * 1.1 / 2
-            half = max(w, h) / 2
+            half = max(w, h) * 1.25 / 2
+            # half = max(w, h) / 2
             
 
             cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
@@ -95,12 +95,12 @@ def test_single_full():
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
             img_name = img_path.split('/')[-1].split('.')[0]
             
-            # cv2.imwrite(f"{save_path}/_{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
-            # torch.save(sample_z.detach().cpu(),f'{save_path}/_{i}.pth')
-            # break
+            cv2.imwrite(f"{save_path}/_{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+            torch.save(sample_z.detach().cpu(),f'{save_path}/_{i}.pth')
+            break
         
-            cv2.imwrite(f"{save_path}/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
-        break
+            # cv2.imwrite(f"{save_path}/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+        # break
         
 
         # utils.save_image(

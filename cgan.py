@@ -8,7 +8,7 @@ from stylegan2.model import ConvLayer, ResBlock, EqualLinear, PixelNorm, StyledC
 
 
 class Encoder(nn.Module):
-    def __init__(self, size, input_channel, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
+    def __init__(self, size, input_channel, latent=512, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
         super().__init__()
 
         channels = {
@@ -22,6 +22,8 @@ class Encoder(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
+        if latent<512:
+            channels = {k: v // 2 for k, v in channels.items()}
         self.channels = channels
 
         convs = [ConvLayer(input_channel, channels[size], 1)]
@@ -78,7 +80,7 @@ class TeethGenerator(nn.Module):
         super().__init__()
 
 
-        self.geometry_encoder = Encoder(size, input_channel=3)
+        self.geometry_encoder = Encoder(size, 3, style_dim)
 
         self.size = size
         self.style_dim = style_dim
@@ -94,7 +96,7 @@ class TeethGenerator(nn.Module):
 
         self.style = nn.Sequential(*layers)
 
-        self.channels = {
+        channels = {
             4: 512,
             8: 512,
             16: 512,
@@ -105,7 +107,9 @@ class TeethGenerator(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
-
+        if style_dim<512:
+            print('yeo')
+            self.channels = {k: v // 2 for k, v in channels.items()}
 
         self.input = ConstantInput(self.channels[4])
         self.conv1 = StyledConv(
@@ -190,7 +194,6 @@ class TeethGenerator(nn.Module):
     ):
         if not input_is_latent:
             styles = [self.style(s) for s in styles]
-            # print(styles[0].shape, len(styles))
 
         if noise is None:
             if randomize_noise:
@@ -215,11 +218,9 @@ class TeethGenerator(nn.Module):
             inject_index = self.n_latent
 
             if styles[0].ndim < 3:
-                # print('aa')
-                latent = styles[0].unsqueeze(1).repeat(real_image.shape[0], inject_index, 1)
+                latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
 
             else:
-                # print('ab')
                 latent = styles[0]
 
         else:
@@ -234,7 +235,6 @@ class TeethGenerator(nn.Module):
 
             latent = torch.cat([latent, latent2], 1)
 
-
         geometry_features = self.geometry_encoder(real_image * mask)
 
         out = self.input(latent)
@@ -244,7 +244,9 @@ class TeethGenerator(nn.Module):
         for conv1, conv2, noise1, noise2, to_rgb in zip(
                 self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
+
             out = torch.cat([out, geometry_features[-(i // 2 + 1)]], dim=1)
+
             # out = out + geometry_features[-(i//2 + 1)]
             out = conv1(out, latent[:, i], noise=noise1)
             out = conv2(out, latent[:, i + 1], noise=noise2)
@@ -325,8 +327,8 @@ class Discriminator(nn.Module):
 
 
 if __name__ == '__main__':
-    model = TeethGenerator(256, 512, 8).cuda()
-    sample = torch.randn(4,14,512).cuda()
+    model = TeethGenerator(256, 256, 8).cuda()
+    sample = torch.randn(4,14,256).cuda()
     image = torch.randn(4,3,256,256).cuda()
     mask = torch.randn(4,1,256,256).cuda()
     model([sample], image, mask, input_is_latent=True)

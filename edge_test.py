@@ -6,6 +6,7 @@ from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
 from test import Yolo, Segmentation, sigmoid
+from tid_seg.models import get_yolo, parameter_pred, get_tid
 from utils import loose_bbox
 
 def noise():
@@ -47,32 +48,31 @@ def noise():
 # torch.cuda.manual_seed(666)
 from render import *
 def test_single_full():
-    from unetrain import UNet
     from edge_gan import TeethGenerator
-    from unetrain import cls
     
-
     renderer = render_init()
     file_path = '/mnt/share/shenfeihong/data/smile_/C01001659595'
     upper, lower, mid = load_up_low(file_path, show=False)
-    zero_ = torch.tensor([0]).unsqueeze(0).cuda()
+    zero_ = 0
     
     model = TeethGenerator(256, 512, 8).cuda()
     ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/080000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     
-    trans = cls(n_channels=3).cuda()
-    trans_weight = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge/198.pt')
-    trans.load_state_dict(trans_weight)
+    # trans = cls(n_channels=3).cuda()
+    # trans_weight = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge/198.pt')
+    # trans.load_state_dict(trans_weight)
 
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
+    tid_model = get_yolo('/mnt/share/shenfeihong/weight/pretrain')
     sample_dir = '/mnt/share/shenfeihong/data/test/11.8.2022'
     save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge_test'
 
     # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
     for file in os.listdir(sample_dir):
         img_path = os.path.join(sample_dir,file)
+        img_name = img_path.split('/')[-1].split('.')[0]
         image = cv2.imread(img_path)
         image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         height, width = image.shape[:2]
@@ -112,30 +112,28 @@ def test_single_full():
         up_edge = (result[..., 3] > 0.6).astype(np.float32)
         down_edge = (result[..., 2] > 0.6).astype(np.float32)
         
-        cv2.imwrite(f"{save_path}/up_edge.png", up_edge*255)  
+        # os.makedirs(f"{save_path}/{img_name}", exist_ok=True)
+        # cv2.imwrite(f"{save_path}/{img_name}/up_edge.png", up_edge*255)
+        # cv2.imwrite(f"{save_path}/{img_name}/down_edge.png", down_edge*255)  
+        # print(img_name)
+        # tid = get_tid(tid_model, mouth)
+        # cv2.imwrite(f"{save_path}/{img_name}/tid.png", tid)  
+        # cv2.imwrite(f"{save_path}/{img_name}/mouth.png", cv2.cvtColor(mouth, cv2.COLOR_RGB2BGR))
+
+          
+
+        camera_x, camera_y, camera_z, dist_lower = parameter_pred(mouth,up_edge,down_edge,tid_model)
         
-        edge = torch.from_numpy(edge.astype(np.float32)[None][None]).cuda()
-        
-        up_edge = cv2.dilate(up_edge, kernel=np.ones((3,3)))
-        up_edge = torch.from_numpy(up_edge.astype(np.float32)[None][None]).cuda()
-        
-        down_edge = cv2.dilate(down_edge, kernel=np.ones((3,3)))
-        down_edge = torch.from_numpy(down_edge.astype(np.float32)[None][None]).cuda()
-        
-        input_mask = torch.cat((mask, up_edge, down_edge), 1)
-        output = trans(input_mask)
-        
-        dist_up = torch.cat((zero_,zero_,zero_),1)
-        fl = torch.clip(output[:,4:5],min=-1, max=1)+13
-        dist_down = torch.cat((zero_,zero_,(output[:,3:4])),1)
-        angle = torch.cat((zero_-1.396,zero_,zero_),1)
-        movement = torch.cat((output[:,0:1],output[:,1:2],output[:,2:3]*5+470),1)
+        dist_up = torch.tensor([zero_,zero_,zero_]).unsqueeze(0).cuda()
+        dist_down = torch.tensor([zero_,zero_,dist_lower]).unsqueeze(0).cuda()
+        angle = torch.tensor([zero_-1.396,zero_,zero_]).unsqueeze(0).cuda()
+        movement = torch.tensor([-camera_x, -camera_y, camera_z]).unsqueeze(0).cuda()
         print(movement, angle, dist_down, dist_up)
         
-        img_name = img_path.split('/')[-1].split('.')[0]
+
         pred_edge = render(renderer=renderer, upper=upper, lower=lower, mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], mid=mid)
         pred_edge = cv2.dilate(pred_edge, np.ones((3,3)))
-        cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge[0][0].detach().cpu().numpy().astype(np.uint8)*255)
+        cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge.astype(np.uint8)*255)
         cv2.imwrite(f"{save_path}/pred_edge/p_{img_name}.png", pred_edge)  
         
         pred_edge = torch.from_numpy((pred_edge/255).astype(np.float32)[None][None]).cuda()

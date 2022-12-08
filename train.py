@@ -444,9 +444,9 @@ if __name__ == "__main__":
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
 
-    args.latent = 512
+    args.latent = 256
     args.n_mlp = 8
-    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.11'
+    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.2'
     args.start_iter = 0
 
 

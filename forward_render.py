@@ -1,14 +1,20 @@
 import os
+import glob
 import torch
 import cv2
 import torch.nn as nn
 import numpy as np
 import trimesh
+# from teeth_arrangement.landmark_detection import extract_landmarks
+# from teeth_arrangement.tooth import GlobalTooth
+from natsort import natsorted
+from scipy.spatial.transform import Rotation as R
 import stl
-from pytorch3d.structures import Meshes, join_meshes_as_scene,join_meshes_as_batch
+from pytorch3d.structures import Meshes, join_meshes_as_scene, join_meshes_as_batch
 from pytorch3d.renderer import (
-    PerspectiveCameras,
+    PerspectiveCameras, look_at_rotation,
     RasterizationSettings, MeshRenderer, MeshRasterizer, BlendParams,
+    SoftSilhouetteShader, HardPhongShader, PointLights, TexturesVertex,
 )
 from pytorch3d.transforms import axis_angle_to_matrix
 
@@ -23,7 +29,7 @@ def meshes_to_tensor(meshes, device='cpu'):
         v = torch.tensor(np.asarray(m.vertices), dtype=torch.float32, device=device)
         verts.append(v)
 
-        f = torch.tensor(np.asarray(m.triangles), dtype=torch.long, device=device)
+        f = torch.tensor(np.asarray(m.faces), dtype=torch.long, device=device)
         faces.append(f)
     mesh_tensor = Meshes(
         verts=verts,
@@ -61,18 +67,26 @@ class SEdgeShader(nn.Module):
         zbuf = fragments.zbuf
         N, H, W, K = zbuf.shape
 
-        zbuf[zbuf == -1] = bg_value
+        # zbuf[zbuf == -1] = bg_value
 
-        depth, _ = torch.min(zbuf, dim=-1)
-        min_depth = (depth.flatten().reshape(depth.shape[0], -1)).min(-1)[0].unsqueeze(-1).unsqueeze(-1)
-        depth[depth==bg_value]=0
-        max_depth = (depth.flatten().reshape(depth.shape[0], -1)).max(-1)[0].unsqueeze(-1).unsqueeze(-1)
-        depth[depth==0]=bg_value
+        # depth, _ = torch.min(zbuf, dim=0)
+
+        # min_depth = (depth.flatten().reshape(depth.shape[0], -1)).min(-1)[0].unsqueeze(-1)
+        # depth[depth==bg_value]=0
+        # max_depth = (depth.flatten().reshape(depth.shape[0], -1)).max(-1)[0].unsqueeze(-1)
+        # depth[depth==0]=bg_value
+
+        # new_depth = 1 - (depth - min_depth) / (max_depth - min_depth)
+
+        # bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
+        # zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
+        # teeth = torch.argmin(zbuf_with_bg, dim=0)
+        
+        
+        alpha = torch.clip(zbuf[...,0], min=0, max=1)
         
 
-        new_depth = 1 - (depth - min_depth) / (max_depth - min_depth)
-        new_depth = torch.clip(new_depth, min=0, max=0.5)*2
-        return new_depth.unsqueeze(1)
+        return alpha.unsqueeze(1)
 
 class SoftEdgeShader(nn.Module):
     def __init__(self, device="cpu", blend_params=None, zfar=200, znear=1):
@@ -94,64 +108,38 @@ class SoftEdgeShader(nn.Module):
 
         return alpha
 
-import open3d as o3d
-def load_mesh(data_file, id):
-    mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_mesh(data_file)
-    mesh.remove_duplicated_vertices()
-    mesh.remove_duplicated_triangles()
+def load_up_low(teeth_folder_path, mode,num_teeth=1):
 
-    mesh.compute_triangle_normals()
-    triangle_normals = np.asarray(mesh.triangle_normals)
-    vertices = np.asarray(mesh.vertices)
-    triangles = np.asarray(mesh.triangles)
-
-    mesh.compute_triangle_normals()
-    vertices_center = (vertices[triangles[:, 0], 1] + vertices[triangles[:, 1], 1] + vertices[
-        triangles[:, 2], 1]) / 3
-    if id // 10 in [1, 3]:
-        mask = (vertices_center <= 0)
-    else:
-        mask = (vertices_center >= 0)
-
-    mesh.triangles = o3d.utility.Vector3iVector(
-        triangles[mask]
-    )
-    mesh.triangle_normals = o3d.utility.Vector3dVector(
-        triangle_normals[mask]
-    )
-    mesh = mesh.simplify_vertex_clustering(voxel_size=1.0)
-    mesh.compute_triangle_normals()
-    return mesh
-
-import copy
-def load_up_low(teeth_folder_path, show=True):
-    num_teeth = 5
     up_keys = list(range(11, 11 + num_teeth)) + list(range(21, 21 + num_teeth))
+    down_keys = list(range(31, 31 + num_teeth)) + list(range(41, 41 + num_teeth))
+
     mid = 0
     up_mesh_list = []
     down_mesh_list = []
 
-    text_file = 'TeethAxis_T2.txt'
-    filename = 'crown_tooth'
+    if mode == 'ori':
+        text_file = 'TeethAxis_Ori.txt'
+    else:
+        text_file = 'TeethAxis_T2.txt'
+    filename = 'tooth'
 
     for line in np.loadtxt(os.path.join(teeth_folder_path, text_file)):
         tid = int(line[0])
+        M = np.zeros(shape=(4, 4))
+        M[:3, 3] = line[5:]
+        r = R.from_quat(line[1:5])
 
+        M[:3, :3] = r.as_matrix()
+        M[3, 3] = 1
         mesh_path = os.path.join(teeth_folder_path, f'{filename}{tid}.stl')
         # stl.mesh.Mesh.from_file(mesh_path).save(mesh_path)
-        mesh = load_mesh(mesh_path, tid)
-        T = np.eye(4)
-        quaternions = line[1:5]
-        quaternions = quaternions[[-1, 0, 1, 2]]
-        T[:3, :3] = mesh.get_rotation_matrix_from_quaternion(quaternions)
-        T[:3, -1] = line[5:]
-        T[-1, -1] = 1
-        mesh_t = copy.deepcopy(mesh).transform(T)
+        mesh = trimesh.load_mesh(mesh_path)
+        mesh.apply_transform(M)
         if tid in up_keys:
             mid += 1
-            up_mesh_list.append(mesh_t)
-        else:
-            down_mesh_list.append(mesh_t)
+            up_mesh_list.append(mesh)
+        elif tid in down_keys:
+            down_mesh_list.append(mesh)
 
     # upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
     # lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
@@ -160,52 +148,38 @@ def load_up_low(teeth_folder_path, show=True):
     mesh_list = []
     mesh_list += up_mesh_list
     mesh_list += down_mesh_list
-
     return up_mesh_list, down_mesh_list, mid
 
-
-def render_(renderer,seg_model, upper, lower, mask, angle=-1.396, movement=None, dist=None):
-    if dist is None:
-        dist = 1
-    if movement is None:
-        movement = [0, 0, 450]
+def render_(renderer, upper, lower, mid, mask, angle=-1.396, movement=None, dist=None, mode='train'):
     R = axis_angle_to_matrix(angle)
     T = movement
-    # edge_ori = draw_edge_(seg_model, upper, lower, renderer, dist, mask, R, T)
-    up_edge, down_edge = draw_single_(seg_model, upper, lower, renderer, dist, mask, R, T)
+    edge_ori = draw_edge_(upper, lower, renderer, dist, mid,mask, R, T, mode)
+    return edge_ori
+
+
+def draw_edge_(upper, lower, renderer, dist, mid,mask, R, T, mode):
+    if mode=='train':
+        teeth_mesh_lower = join_meshes_as_batch([join_meshes_as_scene([lower.offset_verts(dist[1][i])]) for i in range(R.shape[0])])
+        teeth_mesh_upper = join_meshes_as_batch([join_meshes_as_scene([upper.offset_verts(dist[0][i])]) for i in range(R.shape[0])])
     
-    return up_edge, down_edge
+        deepmap_upper = renderer(meshes_world=teeth_mesh_upper, R=R, T=T)*mask
+        deepmap_lower = renderer(meshes_world=teeth_mesh_lower, R=R, T=T)*(mask-deepmap_upper)
+        return deepmap_upper, deepmap_lower
+    else:
+        teeth_mesh = join_meshes_as_batch([join_meshes_as_batch([upper.offset_verts(dist[0][i]), \
+                                                                lower.offset_verts(dist[1][i])]) for i in range(R.shape[0])])
+        deepmap, _ = renderer(meshes_world=teeth_mesh, R=R, T=T)
+        # print(deepmap.shape, mask.squeeze().shape)
 
+        deepmap = deepmap*(mask.squeeze())
 
-def draw_edge_(seg_model, upper, lower, renderer, dist, mask, R, T):
-    
-    upper = meshes_to_tensor(upper).cuda()
-    lower = meshes_to_tensor(lower).cuda()
+        return deepmap
 
-    # teeth_batch = join_meshes_as_batch([join_meshes_as_scene([upper.offset_verts(dist[0][i]), lower.offset_verts(dist[1][i])]) for i in range(R.shape[0])])
-    teeth_batch = join_meshes_as_batch([join_meshes_as_scene([upper, lower.offset_verts(dist[i])]) for i in range(R.shape[0])])
-    image = renderer(meshes_world=teeth_batch, R=R, T=T, extra_mask=None)
-    image = image[..., 0].unsqueeze(1)*mask
-    edge = seg_model(image)
-    return edge
+def deepmapToedge(deepmap, mid):
+    teeth_gray = deepmap.detach().cpu().numpy().astype(np.uint8)
+    # teeth_gray[teeth_gray == mid+1] = 0
+    # teeth_gray[teeth_gray == teeth_gray.max()] = 0
 
-def draw_single_(seg_model, upper,lower, renderer, dist, mask, R, T):
-    
-    upper = meshes_to_tensor(upper).cuda()
-    lower = meshes_to_tensor(lower).cuda()
-
-    # teeth_batch = join_meshes_as_batch([join_meshes_as_scene([upper.offset_verts(dist[0][i]), lower.offset_verts(dist[1][i])]) for i in range(R.shape[0])])
-    teeth_batch_up = join_meshes_as_batch([join_meshes_as_scene([upper.offset_verts(dist[0][i])]) for i in range(R.shape[0])])
-    teeth_batch_down = join_meshes_as_batch([join_meshes_as_scene([lower.offset_verts(dist[1][i])]) for i in range(R.shape[0])])
-    
-    up_edge = renderer(meshes_world=teeth_batch_up, R=R, T=T, extra_mask=None)*mask
-    down_edge = renderer(meshes_world=teeth_batch_down, R=R, T=T, extra_mask=None)*mask
-
-    return up_edge, down_edge
-
-def deepmap_to_edgemap_(teeth_gray, mouth_mask, mid, show=False):
-    teeth_gray[teeth_gray == 15] = 0
-    teeth_gray[teeth_gray == 30] = 0
 
     color = set(teeth_gray.flatten())
     for c in color:
@@ -229,65 +203,193 @@ def deepmap_to_edgemap_(teeth_gray, mouth_mask, mid, show=False):
     grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
     grad = np.abs(gradx) + np.abs(grady)
     down_edge = (grad > 0).astype(np.uint8) * 255
+    return up_edge+down_edge   
+
+def deepmap_to_edgemap_(teeth_gray, mouth_mask, mid, show=False):
+    teeth_gray[teeth_gray == mid+1] = 0
+    teeth_gray[teeth_gray == teeth_gray.max()] = 0
+
+    teeth_gray[mouth_mask==0]=0
+
+    color = set(teeth_gray.flatten())
+    for c in color:
+        mask = teeth_gray == c
+        if np.sum(mask) < 50:
+            teeth_gray[mask] = 0.
+            continue
+
+    up_teeth = teeth_gray * (teeth_gray > mid)
+    down_teeth = teeth_gray * (teeth_gray <= mid)
+
+    kernelx = np.array([[1, -1], [0, 0]])
+    kernely = np.array([[1, 0], [-1, 0]])
+
+    gradx = cv2.filter2D(up_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(up_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    up_edge = (grad > 0).astype(np.uint8) * 255
+
+    gradx = cv2.filter2D(down_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    down_edge = (grad > 0).astype(np.uint8) * 255
+
+
+
     if show:
         cv2.imshow('img1', up_edge + down_edge)
         cv2.waitKey(0)
     return up_edge, down_edge, up_edge + down_edge
 
-import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
-class PLModel(pl.LightningModule):
-    def __init__(self):
-        super(PLModel, self).__init__()
-        # self.save_hyperparameters()
-        kwargs = {
-            'pretrained': False,
-            'features_only': True,
-            'feature_location': '',
-            'out_indices': [1, 2, 3, 4]
-        }
 
-        self.model = smp.Unet(encoder_name='timm-efficientnet-b0',
-                              encoder_depth=2,
-                              encoder_weights=None,
-                              decoder_channels=[32, 16],
-                              in_channels=1,
-                              activation='sigmoid',
-                              classes=1)
+def draw_edge(teeth_mesh, renderer, mask, mid, R, T):
+    teeth_mesh = join_meshes_as_batch([meshes_to_tensor(teeth_mesh).cuda()])
+    deepmap, depth = renderer(meshes_world=teeth_mesh, R=R, T=T)
+    deepmap = deepmap.detach().cpu().numpy()
+    teeth_gray = deepmap.astype(np.uint8)
 
-    def forward(self, img):
-        return self.model(img)
+    up_edge, low_edge, all_edge = deepmap_to_edgemap(teeth_gray, mask, mid, show=False)
+    return all_edge
 
-def seg_model():
-    seg = PLModel.load_from_checkpoint('/mnt/share/shenfeihong/code/fittingx/weights/epoch=19-val_iou=0.943529.ckpt')
-    for param in seg.parameters():
-        param.requires_grad = False
-    print('load seg model')
-    return seg.cuda()
 
-def render_init():
-    raster_settings = RasterizationSettings(
-        image_size=256,
-        blur_radius=2e-3,
-        faces_per_pixel=25,
-        perspective_correct=False,
-        cull_backfaces=True
-    )
-    cameras = PerspectiveCameras(device='cuda', focal_length=12)
-    renderer = MeshRenderer(
-        rasterizer=MeshRasterizer(
-            cameras=cameras,
-            raster_settings=raster_settings
-        ),
-        shader=SEdgeShader())
+def deepmap_to_edgemap(teeth_gray, mouth_mask, mid, show=False):
+    max_value = teeth_gray.max()
+    teeth_gray[teeth_gray == max_value] = 0
+    max_value = teeth_gray.max()
+    teeth_gray[teeth_gray == max_value] = 0
+
+    # teeth_gray[mouth_mask==0]=0
+
+    color = set(teeth_gray.flatten())
+    for c in color:
+        mask = teeth_gray == c
+
+        if np.sum(mask) < 50:
+            teeth_gray[mask] = 0.
+            continue
+
+    up_teeth = teeth_gray * (teeth_gray > mid)
+    down_teeth = teeth_gray * (teeth_gray <= mid)
+
+    kernelx = np.array([[1, -1], [0, 0]])
+    kernely = np.array([[1, 0], [-1, 0]])
+
+    gradx = cv2.filter2D(up_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(up_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    up_edge = (grad > 0).astype(np.uint8) * 255
+
+    gradx = cv2.filter2D(down_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    down_edge = (grad > 0).astype(np.uint8) * 255
+    if show:
+        cv2.imshow('img1', up_edge + down_edge)
+        # cv2.imshow('img', mouth_mask)
+        cv2.waitKey(0)
+    return up_edge, down_edge, up_edge + down_edge
+
+def render_init(mode='train'):
+    if mode=='train':
+        raster_settings = RasterizationSettings(
+            image_size=256,
+            faces_per_pixel=10,
+            perspective_correct=True,
+            cull_backfaces=True
+        )
+        cameras = PerspectiveCameras(device='cuda', focal_length=12)
+        renderer = MeshRenderer(
+            rasterizer=MeshRasterizer(
+                cameras=cameras,
+                raster_settings=raster_settings
+            ),
+            shader=SEdgeShader())
+    else:
+        raster_settings = RasterizationSettings(
+            image_size=256,
+            faces_per_pixel=10,
+            perspective_correct=True,
+            cull_backfaces=True
+        )
+        cameras = PerspectiveCameras(device='cuda', focal_length=12)
+        renderer = MeshRenderer(
+            rasterizer=MeshRasterizer(
+                cameras=cameras,
+                raster_settings=raster_settings
+            ),
+            shader=EdgeShader())        
     return renderer
+from natsort import natsorted
+def mask_filter():
+    file = open('big_mask.txt', 'w')
+    mask_path = '/mnt/share/shenfeihong/data/smile_/seg_6000/'
+    ras = np.concatenate([np.ones((1, 256)) * (i + 1) for i in range(256)], axis=0)
+    for m_file in os.listdir(mask_path):
+        m_path = os.path.join(mask_path, m_file,'MouthMask.png')
+        mask = cv2.imread(m_path)
+        if len(mask.shape) == 3:
+            mask = mask[..., 0]
+        mask = (mask / 255).astype(np.uint8)
 
-if __name__ == '__main__':
-    # upper_jaw, _,_,_ = load_all_teeth('/home/disk/data/tooth_arrangement/1_1000/C01000965707')
-    # load_all_teeth('/home/meta/sfh/data/smile/smile_test/test_03_26/C01004890247/info',show=True)
-    seg = seg_model()
+        res = (ras*mask).reshape(1,-1)[0]
+        right = max(res)
+        res[res==0]=right
+        left = min(res)
+        height = right-left
+        if height>80:
+            print(m_file)
+            file.write(m_path+'\n')
+
+    file.close()
+
+def img_gen():
+    with open('big_mask.txt','r') as f:
+        a = f.readlines()
     renderer = render_init()
-    file_path = '/home/disk/data/tooth_arrangement/1_1000/C01001637142'
-    upper, lower, mid = load_up_low(file_path, show=True)
-    for i in range(10):
-        render_(renderer, seg, upper, lower, mid, angle=-1.396, movement=[0,0,400+i*10], dist=0)
+
+    path = '/home/disk/data/tooth_arrangement/1_1000/'
+    save = '/mnt/share/shenfeihong/data/smile_/edge'
+    for file in os.listdir(path)[:200]:
+        print(file)
+        #
+        file_path = os.path.join(path, file)
+        save_path = os.path.join(save, file)
+        i = np.random.randint(len(a) - 1)
+        mask_file = a[i]
+        print(mask_file.replace('\n',''))
+        mask = cv2.imread(mask_file.replace('\n',''))
+        if len(mask.shape) == 3:
+            mask = mask[..., 0]
+        mask = (mask / 255).astype(np.uint8)
+
+        dist = [np.random.randint(-6,-3),np.random.randint(3,6)]
+        movement = [0, 0, 470+np.random.randint(-3,3)*10]
+
+        # dist = [0,0]
+        # movement = [0,0,475]
+        upper_ori, lower_ori, mid_ori = load_up_low(file_path, mode='ori', show=False)
+        edge_ori = render_(renderer,upper_ori, lower_ori, mid_ori,mask, movement=movement, dist=dist)
+        upper, lower, mid = load_up_low(file_path, mode='T2', show=False)
+        edge_align = render_(renderer,upper, lower, mid, mask, movement=movement, dist=dist)
+
+        # cv2.imshow('align', edge_align)
+        # cv2.imshow('align1', edge_ori)
+        # cv2.waitKey(0)
+        # continue
+
+        os.makedirs(save_path,exist_ok=True)
+        cv2.imwrite(os.path.join(save_path, 'ori.png'), edge_ori)
+        cv2.imwrite(os.path.join(save_path, 'align.png'), edge_align)
+        cv2.imwrite(os.path.join(save_path, 'mask.png'), mask.astype(np.uint8) * 255)
+
+def img_gen_single():
+
+    renderer = render_init()
+
+    file_path = '/mnt/share/shenfeihong/data/smile_/C01001659595'
+    movement = [0, 0, 470]
+    # upper_ori, lower_ori, mid_ori = load_up_low(file_path, mode='ori', show=False)
+    # edge_ori = render_(renderer,upper_ori, lower_ori, mid_ori,1, movement=movement)
+    upper, lower, mid = load_up_low(file_path, mode='T2', show=False)
+    edge_align = render_(renderer,upper, lower, mid, 1, movement=movement)
+

@@ -455,8 +455,8 @@ class fuck(Dataset):
                         )       
         else:
             self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/mouth_seg/*/mouth.jpg')[:3000]+\
-                                glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')
+            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-tianshi/seg/*/mouth.png')
+                                # glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')
 
             self.transform = transforms.Compose(
                                 [
@@ -474,12 +474,9 @@ class fuck(Dataset):
     def __getitem__(self, index):
         frame_file = self.all_files[index]
         f_name = frame_file.split('/')[-1]
-        if self.mode == 'encoder':
-            ske_file = frame_file.replace(f_name,'mask_filtered.png')
-            inner = 0
-        else:
-            ske_file = frame_file.replace(f_name,'MouthMask.png')
-            inner = np.random.randint(5)
+
+        ske_file = frame_file.replace(f_name,'mask.png')
+        inner = np.random.randint(5)
         
         frame = Image.open(frame_file)
         mask = Image.open(ske_file)
@@ -500,10 +497,9 @@ class fuck(Dataset):
         
         ##edge
         fdir = frame_file.split('/')[-3]
-        if (fdir=='seg_6000'):
-            edge = Image.open(frame_file.replace(f_name,'edge.png'))
-        else:
-            edge = Image.open(frame_file.replace(f_name,'TeethEdge.png'))
+
+        edge = Image.open(frame_file.replace(f_name,'edge.png'))
+
         edge = np.array(edge)/255
         if len(edge.shape) == 3:
             edge = edge[...,0]
@@ -519,25 +515,39 @@ class fuck(Dataset):
         return {'images': img, 'mask':cir_mask, 'big_mask':big_mask, 'edge':edge}
 
 def mask_proc(mask, dilate=True):
-        if dilate:
-            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-            res = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            contours = res[-2]
-            cv2.fillPoly(mask,pts=contours,color=(255,255,255))
         mask = np.array(mask)/255
         if len(mask.shape) == 3:
             mask = mask[...,0]
 
         return mask.astype(np.float32)[None]
-    
+
+def seg_proc(tid_seg, show_tid):
+    # show_tid = [11,21,41,31]
+    out_tid = np.zeros_like(tid_seg)
+    for tid in show_tid:
+        out_tid[tid_seg==tid]=1
+    # tid_seg[tid_seg!=1]=0
+    return out_tid.astype(np.float32)[None]
+
 from natsort import natsorted
 class edge(Dataset):
     def __init__(self, mode='train'):
+        
         if mode=='train':
-            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/face_seg_22_11_25/*/mouth.png', recursive=False))
+            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png', recursive=False))[40:]
+        elif mode=='val':
+            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png', recursive=False))[:40]
         else:
-            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/face_seg_22_11_25/*/mouth.png', recursive=False))[:40]
+            self.all_files = natsorted(glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/dataset_test/*/mouth.png', recursive=False))[:40]
+            
         print('total image:', len(self.all_files))
+        self.transform = transforms.Compose(
+                    [
+                        transforms.Resize([256,256]),
+                        transforms.ToTensor()
+                        
+                    ]
+            )
 
     def __len__(self):
         return len(self.all_files)
@@ -545,33 +555,44 @@ class edge(Dataset):
     def __getitem__(self, index):
         ori_file = self.all_files[index]
         
-        mask_file = ori_file.replace('mouth','mask')
-        up_edge_file = ori_file.replace('mouth','up_edge')
-        down_edge_file = ori_file.replace('mouth', 'down_edge')
+        mask_file = ori_file.replace('mouth', 'mask')
+        tid_file = ori_file.replace('mouth', 'tid')
         
-        up_edge = mask_proc(cv2.imread(up_edge_file))
-        down_edge = mask_proc(cv2.imread(down_edge_file))
+        up_edge = ori_file.replace('mouth', 'up_edge')
+        down_edge = ori_file.replace('mouth', 'down_edge')
         
-        down_edge[up_edge>0]=0
+        up_edge = mask_proc(cv2.imread(up_edge))
+        down_edge = mask_proc(cv2.imread(down_edge))
         
-        if os.path.exists(mask_file):
-            mask = cv2.imread(mask_file)
-            mask = mask_proc(mask, dilate=False)
+        mask = mask_proc(cv2.imread(mask_file))
+        tid_seg = np.array(cv2.imread(tid_file))[...,0]
+        if (tid_seg<30).all():
+            contain_lower = 0
         else:
-            mask = np.ones_like(edge)
+            contain_lower = 1
+            
+        upper_tid_seg = seg_proc(tid_seg,[11,21])
+        lower_tid_seg = seg_proc(tid_seg, [31,41])
+        img = Image.open(ori_file)
+        img = self.transform(img)*2-1
             
         if np.random.randint(2)>0:
             mask = mask[:,:,::-1].copy()
+            img = flip(img,2)
+            upper_tid_seg = upper_tid_seg[:,:,::-1].copy()
+            lower_tid_seg = lower_tid_seg[:,:,::-1].copy()
             up_edge = up_edge[:,:,::-1].copy()
             down_edge = down_edge[:,:,::-1].copy()
             
-        return {'mask': mask, 'down_edge':down_edge, 'up_edge':up_edge}
+            
+            
+        return {'mask': mask, 'up_edge':up_edge, 'down_edge':down_edge, 'mouth':img, 'label_up':upper_tid_seg, 'label_down':lower_tid_seg, 'lower':contain_lower}
        
-def get_loader_unet(mode='train'):
+def get_loader_unet(size =1, mode='train'):
     dataset = edge(mode)
     loader = DataLoader(
         dataset=dataset,
-        batch_size=16,
+        batch_size=size,
         num_workers=4,
         shuffle=True,
         drop_last=True,
