@@ -11,19 +11,23 @@ import torch.nn as nn
 import trimesh
 import os
 from scipy.spatial.transform import Rotation as R
-
-
+import time
+import open3d as o3d
+import copy
 def draw_edge(upper, lower, renderer, dist, mask, R, T, mid):
+    start_time = time.time()
     upper = meshes_to_tensor(upper)
     lower = meshes_to_tensor(lower)
-    print(mid)
 
     teeth_batch = join_meshes_as_batch([upper, lower.offset_verts(dist[1][0])])
+    print('init', time.time()-start_time)
     deepmap, depth = renderer(meshes_world=teeth_batch, R=R, T=T)
+    print('render', time.time()-start_time)
 
     deepmap = deepmap.detach().numpy()
 
     teeth_gray = deepmap.astype(np.uint8)
+    teeth_gray = cv2.resize(teeth_gray, (256,256), interpolation = cv2.INTER_AREA)
 
     up_edge, low_edge, all_edge = deepmap_to_edgemap(teeth_gray, mid, mask, show=False)
     return all_edge
@@ -107,6 +111,9 @@ def load_up_low(teeth_folder_path, show=True):
         mesh_path = os.path.join(teeth_folder_path, f'{filename}{tid}.stl')
         mesh = trimesh.load_mesh(mesh_path)
         mesh.apply_transform(M)
+        
+        mesh = mesh.simplify_quadratic_decimation(50)
+        
         if tid in up_keys:
             mid += 1
             up_mesh_list.append(mesh)
@@ -114,7 +121,9 @@ def load_up_low(teeth_folder_path, show=True):
             down_mesh_list.append(mesh)
 
     upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
+    upper = upper.simplify_quadratic_decimation(50)
     lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
+    lower = lower.simplify_quadratic_decimation(50)
     up_mesh_list.append(upper)
     down_mesh_list.append(lower)
     mesh_list = []
@@ -147,6 +156,7 @@ def render_init():
 
 class EdgeShader(nn.Module):
     def forward(self, fragments, meshes, **kwargs):
+        start_time = time.time()
         bg_value = 1e6
         zbuf = fragments.zbuf
         N, H, W, K = zbuf.shape
@@ -154,6 +164,7 @@ class EdgeShader(nn.Module):
         bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
         zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
         teeth = torch.argmin(zbuf_with_bg, dim=0)
+        print('shader', time.time()-start_time)
 
         return teeth, 1
 

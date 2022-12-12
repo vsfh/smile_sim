@@ -164,6 +164,7 @@ def smile_sim_predict(
 
 if __name__=="__main__":
     img_path = '/mnt/share/shenfeihong/data/test/11.8.2022/1.jpg'
+    img_path = '/home/meta/下载/20221212-173715.jpg'
     image = cv2.imread(img_path)
     image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     server_url = '0.0.0.0:8001'

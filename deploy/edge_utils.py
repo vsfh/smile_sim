@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import torch
-
+import time
 camera_dict= {
     'z_init':400,
     'z_init_width':33,
@@ -74,7 +74,7 @@ def _edge_pred(tid, edgeu, edged, mask):
     pos_edged_up = edged_up[edged_up>0]
     dist = np.mean(pos_edged_up[int(len(pos_edged_up)/3):int(len(pos_edged_up)/3*2)])\
                -np.mean(pos_edgeu_down[int(len(pos_edgeu_down)/3):int(len(pos_edgeu_down)/3*2)])
-
+    print(dist)
     if dist>threshold[0]:
         dist = dist+camera_dict['y_init_11_low']-camera_dict['y_init_31_up']
         dist_lower = dist/camera_dict['y_change']
@@ -83,14 +83,15 @@ def _edge_pred(tid, edgeu, edged, mask):
         
     zero_ = 0
     dist_up = torch.tensor([zero_,zero_,zero_]).unsqueeze(0)
-    dist_down = torch.tensor([zero_,zero_,dist_lower]).unsqueeze(0)
-    angle = torch.tensor([zero_-1.396,zero_,zero_]).unsqueeze(0)
-    movement = torch.tensor([-camera_x, -camera_y, camera_z]).unsqueeze(0)
+    dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0)
+    angle = torch.tensor([zero_-1.396,zero_,zero_]).type(torch.float32).unsqueeze(0)
+    movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0)
     
     print(dist_down, angle, movement)
-
+    start_time = time.time()
 
     pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down])
+    print(time.time()-start_time)
     pred_edge = cv2.dilate(pred_edge, np.ones((3,3))) 
     cv2.imshow('deep', pred_edge)
     cv2.waitKey(0)       
