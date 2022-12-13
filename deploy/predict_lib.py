@@ -55,11 +55,10 @@ def _seg_mouth(image, triton_client):
 def face_rot(image, triton_client, height, width):
  
     # width, height = imagesize.get(BytesIO(image))        
-    # image = np.frombuffer(image, dtype = np.uint8)
 
     meta = utils.compute_meta((width, height), (640, 640), align_mode='topleft')
     
-    
+    image = np.frombuffer(image, dtype = np.uint8)
     res = tif.infer('cls-ensemble',
                     {'image_bin': image}, triton_client) 
     res = utils.yolo_postprocess(res, meta,
@@ -109,9 +108,9 @@ def smile_sim_predict(
     # step 0. create triton client
     triton_client = tif.create_client(server_url)
     height, width = image.shape[:2]
-    # roundn = face_rot(image, triton_client, height, width)
-    # image = np.rot90(image, -roundn)
-    
+    roundn = face_rot(rot_image, triton_client, height, width)
+    image = np.rot90(image, -roundn)
+    height, width = image.shape[:2]    
     # step 1. find mouth obj
     objs = _find_objs(image, triton_client)
 
@@ -164,11 +163,15 @@ def smile_sim_predict(
 
 if __name__=="__main__":
     img_path = '/mnt/share/shenfeihong/data/test/11.8.2022/1.jpg'
-    img_path = '/home/meta/下载/20221212-173715.jpg'
+    # img_path = '/home/meta/下载/20221213-122431.jpg'
     image = cv2.imread(img_path)
-    image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    # _, rot_image = cv2.imencode('.jpg',image)
     server_url = '0.0.0.0:8001'
-    output = smile_sim_predict(1, image, server_url)
+    
+    with open(img_path, 'rb') as f:
+        rot_image = f.read()
+    output = smile_sim_predict(rot_image, rgb_image, server_url)
     output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
     
     cv2.imshow('img', output)
