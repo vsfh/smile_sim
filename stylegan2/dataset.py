@@ -455,8 +455,9 @@ class fuck(Dataset):
                         )       
         else:
             self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-tianshi/seg/*/mouth.png')
-                                # glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')
+            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-tianshi/seg/*/mouth.png')+\
+                                glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
+                                    glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')
 
             self.transform = transforms.Compose(
                                 [
@@ -474,8 +475,10 @@ class fuck(Dataset):
     def __getitem__(self, index):
         frame_file = self.all_files[index]
         f_name = frame_file.split('/')[-1]
-
-        ske_file = frame_file.replace(f_name,'mask.png')
+        if f_name[-2]=='p':
+            ske_file = frame_file.replace(f_name,'MouthMask.png')
+        else:
+            ske_file = frame_file.replace(f_name,'mask.png')
         inner = np.random.randint(5)
         
         frame = Image.open(frame_file)

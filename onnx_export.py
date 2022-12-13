@@ -27,13 +27,14 @@ class Gen(nn.Module):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
         self.decoder = TeethGenerator(256, 512, n_mlp=8).cuda()
-        sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge_test/pth/5.pth').cuda()
-        self.sample_z = [self.decoder.style(sample_z).detach()]
+        self.sample_z = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge_test/pth/5.pth').cuda()
+        # self.sample_z = [self.decoder.style(sample_z).detach()]
 
         # self.sample_z = torch.randn((1,512)).cuda()
 
     def forward(self, real_img, mask,edge, big_mask):
-        images,_ = self.decoder(self.sample_z, real_image=real_img, mask=mask,edge=edge,
+        sample_z = [self.decoder.style(self.sample_z)]
+        images,_ = self.decoder(sample_z, real_image=real_img, mask=mask,edge=edge,
                                             input_is_latent=True,
                                             randomize_noise=False)
         images = real_img*(1-big_mask)+images*big_mask
@@ -43,6 +44,7 @@ def convert_to_onnx():
     dynamic_axes = {
         'input_image': {0: 'batch_size'},
         'mask': {0: 'batch_size'},
+        'edge': {0: 'batch_size'},
         'big_mask': {0: 'batch_size'},
         'align_img': {0: 'batch_size'}
     }
