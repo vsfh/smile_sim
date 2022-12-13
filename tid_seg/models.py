@@ -1,6 +1,6 @@
 import asyncio
 import numpy as np
-from .utils import *
+from utils import *
 import os
 from typing import Optional, Dict, List, Tuple
 import cv2
@@ -639,8 +639,8 @@ class YoloModel(CVModel):
 
 
 def get_yolo(model_root):
-    backend = 'native'
-    teeth_model = YoloModel(model_root, 'tmp-teeth', (256, 256),
+    backend = 'web'
+    teeth_model = YoloModel(model_root, 'new_smile_tid', (256, 256),
                             backend=backend, pad_val=114,
                             output_map={
                                 'bbox': 'output',
@@ -758,3 +758,11 @@ def parameter_pred(mouth, edgeu, edged, model):
     else:
         dist_lower = 0
     return camera_x, camera_y, camera_z, dist_lower
+
+if __name__=='__main__':
+    image = cv2.imread('/home/meta/sfh/gitee/render/test/45.png')
+    image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    teeth_model = get_yolo('0.0.0.0:8001')
+    tid = get_tid(teeth_model=teeth_model, img=image)
+    cv2.imshow('img', tid.astype(np.uint8))
+    cv2.waitKey(0)

@@ -70,6 +70,7 @@ def face_rot(image, triton_client, height, width):
                             mode='xywh',
                             )
     angle = res[7][0][4]
+    print(angle)
     roundn = 0
     if angle-90>45:
         roundn = angle//90-1
@@ -137,6 +138,9 @@ def smile_sim_predict(
     fg = seg_result[..., 0]
     fg = np.array(fg > 0.6, dtype=np.float32)
     
+    if(np.sum(fg)<10):
+        return cv2.resize(template, (width, height))
+    
     tid = _seg_tid(mouth, server_url)
     up_edge = (seg_result[..., 3] > 0.6).astype(np.float32)
     down_edge = (seg_result[..., 2] > 0.6).astype(np.float32)
@@ -146,7 +150,7 @@ def smile_sim_predict(
     mask = cv2.dilate(fg, kernel=np.ones((23, 23)))-big_mask
     mask = mask[...,None]
     big_mask = big_mask[...,None]
-    edge = edge[...,None]
+    edge = edge[...,None]*fg[...,None]
     input_image = mouth.astype(np.float32) / 255 * 2 - 1
 
     input_dict = {'input_image':input_image,'mask':mask,'edge':edge,'big_mask':big_mask}
@@ -162,17 +166,21 @@ def smile_sim_predict(
     return image
 
 if __name__=="__main__":
-    img_path = '/mnt/share/shenfeihong/data/test/11.8.2022/1.jpg'
-    # img_path = '/home/meta/下载/20221213-122431.jpg'
-    image = cv2.imread(img_path)
-    rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    # _, rot_image = cv2.imencode('.jpg',image)
-    server_url = '0.0.0.0:8001'
-    
-    with open(img_path, 'rb') as f:
-        rot_image = f.read()
-    output = smile_sim_predict(rot_image, rgb_image, server_url)
-    output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
-    
-    cv2.imshow('img', output)
-    cv2.waitKey(0)
+    import os
+    path = '/home/disk/data/test/smile/2022.12.13/40photo'
+    for file in os.listdir(path)[:1]:
+        if not os.path.isfile(os.path.join('./result', file)):
+            print(file)
+            img_path = os.path.join(path,'BC01000007533.jpg')
+            image = cv2.imread(img_path)
+            rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            # _, rot_image = cv2.imencode('.jpg',image)
+            server_url = '0.0.0.0:8001'
+            
+            with open(img_path, 'rb') as f:
+                rot_image = f.read()
+            output = smile_sim_predict(rot_image, rgb_image, server_url)
+            output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
+            
+            # cv2.imshow('img', output)
+            # cv2.waitKey(0)

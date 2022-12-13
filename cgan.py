@@ -156,6 +156,7 @@ class TeethGenerator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
+        self.img_proj = nn.Linear(256,1)
 
     def make_noise(self):
         device = self.input.input.device
@@ -191,7 +192,11 @@ class TeethGenerator(nn.Module):
             input_is_latent=False,
             noise=None,
             randomize_noise=True,
+            input_img=False
     ):
+        if input_img:
+            styles = [self.img_proj(real_image.mean(1))[...,0]]
+
         if not input_is_latent:
             styles = [self.style(s) for s in styles]
 
@@ -327,10 +332,11 @@ class Discriminator(nn.Module):
 
 
 if __name__ == '__main__':
-    model = TeethGenerator(256, 256, 8).cuda()
-    sample = torch.randn(4,14,256).cuda()
-    image = torch.randn(4,3,256,256).cuda()
-    mask = torch.randn(4,1,256,256).cuda()
-    model([sample], image, mask, input_is_latent=True)
+
+    model = TeethGenerator(256, 256, 8)
+    sample = torch.randn(4,256)
+    image = torch.randn(4,3,256,256)
+    mask = torch.randn(4,1,256,256)
+    model(image, image, mask)
     
 

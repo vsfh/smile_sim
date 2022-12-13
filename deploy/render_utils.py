@@ -112,7 +112,7 @@ def load_up_low(teeth_folder_path, show=True):
         mesh = trimesh.load_mesh(mesh_path)
         mesh.apply_transform(M)
         
-        mesh = mesh.simplify_quadratic_decimation(50)
+        mesh = mesh.simplify_quadratic_decimation(100)
         
         if tid in up_keys:
             mid += 1
@@ -121,7 +121,7 @@ def load_up_low(teeth_folder_path, show=True):
             down_mesh_list.append(mesh)
 
     upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
-    upper = upper.simplify_quadratic_decimation(50)
+    upper = upper.simplify_quadratic_decimation(100)
     lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
     lower = lower.simplify_quadratic_decimation(50)
     up_mesh_list.append(upper)
