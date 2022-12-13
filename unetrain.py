@@ -92,7 +92,7 @@ class UNet(nn.Module):
         self.center = nn.Sequential(
             CenterBlock(256, 256))
         self.decoder = nn.ModuleList([UpBlock(384, 128),
-                                    UpBlock(128, 2)])
+                                    UpBlock(128, 1)])
 
     def forward(self, x):
         xi = [self.encoder[0](x)]
@@ -174,18 +174,16 @@ def train():
 
             output = model(mouth - up_edge)
             
-            loss = F.mse_loss(output, label)-torch.sum(torch.abs(label[:,0,:,:]-label[:,1,:,:]))
+            loss = F.mse_loss(output, label)
             loss.backward()
             optimize.step()
             writer.add_scalar('Loss/train', loss.item(), idx)
 
             # writer.add_image('Image/Gap', mouth[0], idx)
             if not idx%100:
-                writer.add_image('Image/label0', label[0][:1], idx)
-                writer.add_image('Image/label1', label[0][1:], idx)
+                writer.add_image('Image/label0', label[0], idx)
                 
-                writer.add_image('Image/output0', output[0][:1], idx)
-                writer.add_image('Image/output1', output[0][1:], idx)
+                writer.add_image('Image/output0', output[0], idx)
             
             
             
@@ -217,7 +215,52 @@ def train():
                     writer.add_image('Image/LowerOutput', mouth_edge, i)
                     writer.add_image('Image/Input', mouth, i)
 
+def edge_test():
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge'
+    model = UNet().cuda()
+    ckpt = torch.load(os.path.join(save_path, '25.pt'))
+    model.load_state_dict(ckpt)
+    sample_dir = '/mnt/share/shenfeihong/data/test/22.12.7/img_number'
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge'
+
+    # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
+    for file in os.listdir(sample_dir):
+
+        save_name = os.path.join(save_path, f'{file}.jpg')
+        mouth =  np.array(cv2.cvtColor(cv2.imread(f'{sample_dir}/{file}/mouth.png') , cv2.COLOR_BGR2RGB)).transpose(2,0,1)/255*2-1
+        up_edge = mask_proc(cv2.imread(f'{sample_dir}/{file}/up_edge.png'))
+        
+        m_tensor = torch.from_numpy(mouth.astype(np.float32)[None]).cuda()
+        e_tensor = torch.from_numpy(up_edge.astype(np.float32)[None]).cuda()
+        
+        output = model(m_tensor-e_tensor)
+        output = ((output[0][0]>0.8)*255).detach().cpu().numpy().astype(np.uint8)
+        output = cv2.dilate(cv2.erode(output, np.ones((3,3))), np.ones((3,3)))
+        cv2.imwrite(save_name, output )
+ 
+def convert_to_onnx():
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge'
+    dynamic_axes = {
+        'input_image': {0: 'batch_size'},
+        'mask': {0: 'batch_size'},
+        'big_mask': {0: 'batch_size'},
+        'align_img': {0: 'batch_size'}
+    }
+
+    output_path = 'model.onnx'
+    # input = './smile/C01001459133.jpg'
+    input1 = torch.randn(1, 3, 256, 256).cuda()
+    
+    model = UNet().cuda()
+    ckpt = torch.load(os.path.join(save_path, '25.pt'))
+    model.load_state_dict(ckpt)
+    # model.psp_encoder.load_state_dict(ckpt_encoder_)
+    input_name = ['input_image','mask','edge','big_mask']
+    output_name = ['align_img']
+    torch.onnx.export(model, (input1, input2, input3, input4), output_path, export_params=True, input_names=input_name, output_names=output_name,
+                      opset_version=13, dynamic_axes=dynamic_axes)   
+    
 if __name__=='__main__':
     # toy()
     # model()
-    train()
+    edge_test()

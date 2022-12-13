@@ -567,10 +567,10 @@ class edge(Dataset):
         mask = mask_proc(cv2.imread(mask_file))
         tid_seg = np.array(cv2.imread(tid_file))[...,0]
 
-        label = np.zeros((2,256,256))
-        label[0][tid_seg==11]=1.0
-        label[1][tid_seg==21]=1.0
-        label.astype(np.float32)
+        label = np.zeros((256,256))
+        label[tid_seg==11]=1.0
+        label[tid_seg==21]=1.0
+        label = label.astype(np.float32)[None]
         
         img = Image.open(ori_file)
         img = self.transform(img)*2-1

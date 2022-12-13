@@ -638,30 +638,6 @@ class YoloModel(CVModel):
         self.post_params = {'yolo': {}}
 
 
-class KeypointsModel(CVModel):
-    def init_post_params(self):
-        self.post_params = {'kps': {}}
-
-
-class SegModel(CVModel):
-    def init_post_params(self):
-        self.post_params = {'seg': {}}
-
-
-class ClsModel(BaseModel):
-    def __init__(self, model_root, model_name, image_size, resize_ratio=1., type='native'):
-        super(ClsModel, self).__init__(model_root, model_name, type)
-        self.image_size = image_size
-        self.resize_ratio = resize_ratio
-
-    def predict(self, img, bbox=None, show=False):
-        pass
-
-
-class InstanceModel(CVModel):
-    def init_post_params(self):
-        self.post_params = {'instance': {}}
-        
 def get_yolo(model_root):
     backend = 'native'
     teeth_model = YoloModel(model_root, 'tmp-teeth', (256, 256),
