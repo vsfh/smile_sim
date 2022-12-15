@@ -179,7 +179,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         requires_grad(discriminator, True)
 
         noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise, real_image=real_img, mask=mask)
+        fake_img, _ = generator(noise, real_image=real_img, mask=mask, input_img=True)
 
         if args.augment:
             real_img_aug, _ = augment(real_img, ada_aug_p)
@@ -229,7 +229,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         requires_grad(discriminator, False)
 
         noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise, real_image=real_img, mask=mask)
+        fake_img, _ = generator(noise, real_image=real_img, mask=mask, input_img=True)
 
         if args.augment:
             fake_img, _ = augment(fake_img, ada_aug_p)
@@ -248,7 +248,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         if g_regularize:
             path_batch_size = 1
             noise = mixing_noise(path_batch_size, args.latent, args.mixing, device)
-            fake_img, latents = generator(noise, real_image=real_img[:1,...], mask=mask[:1,...],return_latents=True)
+            fake_img, latents = generator(noise, real_image=real_img[:1,...], mask=mask[:1,...],return_latents=True, input_img=True)
 
             path_loss, mean_path_length, path_lengths = g_path_regularize(
                 fake_img, latents, mean_path_length
@@ -311,7 +311,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
             if i % 100 == 0:
                 with torch.no_grad():
                     g_ema.eval()
-                    sample, _ = g_ema([sample_z], real_image=real_img, mask=mask)
+                    sample, _ = g_ema([sample_z], real_image=real_img, mask=mask, input_img=True)
                     utils.save_image(
                         sample,
                         f"{sample_dir}/{str(i).zfill(6)}.png",
@@ -320,7 +320,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         range=(-1, 1),
                     )
 
-            if i % 10000 == 0:
+            if i % 5000 == 0:
                 torch.save(
                     {
                         "g": g_module.state_dict(),
@@ -445,7 +445,7 @@ if __name__ == "__main__":
         synchronize()
 
     args.latent = 256
-    args.n_mlp = 8
+    args.n_mlp = 1
     args.weight_dir = './2022.12.13'
     args.start_iter = 0
 

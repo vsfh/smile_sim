@@ -8,7 +8,7 @@ from stylegan2.model import ConvLayer, ResBlock, EqualLinear, PixelNorm, StyledC
 
 
 class Encoder(nn.Module):
-    def __init__(self, size, input_channel, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
+    def __init__(self, size, input_channel, latent=512, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
         super().__init__()
 
         channels = {
@@ -22,6 +22,8 @@ class Encoder(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
+        if latent<512:
+            channels = {k: v // 2 for k, v in channels.items()}
         self.channels = channels
 
         convs = [ConvLayer(input_channel, channels[size], 1)]
@@ -78,7 +80,7 @@ class TeethGenerator(nn.Module):
         super().__init__()
 
         self.size = size
-        self.geometry_encoder = Encoder(size, input_channel=4)
+        self.geometry_encoder = Encoder(size, 4, style_dim)
         self.style_dim = style_dim
 
         layers = [PixelNorm()]
@@ -92,7 +94,7 @@ class TeethGenerator(nn.Module):
 
         self.style = nn.Sequential(*layers)
 
-        self.channels = {
+        channels = {
             4: 512,
             8: 512,
             16: 512,
@@ -103,6 +105,9 @@ class TeethGenerator(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
+        if style_dim<512:
+            print('yeo')
+            self.channels = {k: v // 2 for k, v in channels.items()}
 
         self.input = ConstantInput(self.channels[4])
         self.conv1 = StyledConv(
@@ -268,7 +273,7 @@ class Discriminator(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
-        channels = {k: v // 2 for k, v in channels.items()}
+        # channels = {k: v // 2 for k, v in channels.items()}
 
         convs = [ConvLayer(input_channnel, channels[size], 1)]
 
@@ -316,10 +321,12 @@ class Discriminator(nn.Module):
 
 
 if __name__ == '__main__':
-    model = Generator(256, 512, 8).cuda()
-    sample = torch.randn(4,14,512).cuda()
+    model = TeethGenerator(256, 256, 8).cuda()
+    sample = torch.randn(4,512).cuda()
     image = torch.randn(4,3,256,256).cuda()
     mask = torch.randn(4,1,256,256).cuda()
+    # model([sample],image,mask, input_is_latent=True)
     model([sample],image,mask, input_is_latent=True)
+    
     
 

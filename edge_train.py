@@ -363,7 +363,7 @@ if __name__ == "__main__":
         "--iter", type=int, default=800000, help="total training iterations"
     )
     parser.add_argument(
-        "--batch", type=int, default=8, help="batch sizes for each gpus"
+        "--batch", type=int, default=2, help="batch sizes for each gpus"
     )
     parser.add_argument(
         "--n_sample",
@@ -461,9 +461,9 @@ if __name__ == "__main__":
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
 
-    args.latent = 512
+    args.latent = 256
     args.n_mlp = 8
-    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23'
+    args.weight_dir = './2022.12.13/edge'
     args.start_iter = 0
     args.project = True
 

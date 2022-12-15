@@ -284,7 +284,7 @@ class Discriminator(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
-        channels = {k: v // 2 for k, v in channels.items()}
+        # channels = {k: v // 2 for k, v in channels.items()}
 
         convs = [ConvLayer(3, channels[size], 1)]
 

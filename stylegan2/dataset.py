@@ -455,8 +455,7 @@ class fuck(Dataset):
                         )       
         else:
             self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-tianshi/seg/*/mouth.png')+\
-                                glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
+            self.all_files =  glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
                                     glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')
 
             self.transform = transforms.Compose(
