@@ -156,7 +156,7 @@ class TeethGenerator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        self.img_proj = nn.Linear(256,1)
+        # self.img_proj = nn.Linear(256,1)
 
     def make_noise(self):
         device = self.input.input.device

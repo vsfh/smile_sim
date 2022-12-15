@@ -531,7 +531,7 @@ def seg_proc(tid_seg, show_tid):
     # tid_seg[tid_seg!=1]=0
     return out_tid.astype(np.float32)[None]
 
-from natsort import natsorted
+
 class edge(Dataset):
     def __init__(self, mode='train'):
         
@@ -582,8 +582,10 @@ class edge(Dataset):
             img = flip(img,2)
             label = label[:,:,::-1].copy()
             up_edge = up_edge[:,:,::-1].copy()
+            down_edge = down_edge[:,:,::-1].copy()
+            
 
-        return {'mask': mask, 'mouth':img, 'label':label, 'up_edge':up_edge}
+        return {'mask': mask, 'mouth':img, 'label':label, 'up_edge':up_edge+down_edge}
        
 def get_loader_unet(size =1, mode='train'):
     dataset = edge(mode)
@@ -605,6 +607,10 @@ if __name__ == '__main__':
     for batch in ds:
         images = batch['images']
         mask = batch['mask']
+        edge = batch['edge']
+        a = np.zeros((256,256,3))
+        a[...,0] = mask*255
+        a[...,1] = edge*255
         # print(images.shape, mask.shape)
         assert images.shape[1]==images.shape[2], 'error'
         assert mask.shape[1]==mask.shape[2], 'mask error'
@@ -617,7 +623,7 @@ if __name__ == '__main__':
         #     cv2.imshow(str(i), o)
         #     print(i, o.min(), o.max())
         # # cv2.imshow('tmp', input_semantic[:3].transpose(1,2,0))
-        cv2.imshow('img', ((images+1)/2).numpy().transpose(1,2,0))
+        cv2.imshow('img', a.astype(np.uint8))
         cv2.waitKey(0)
 
 

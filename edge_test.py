@@ -52,11 +52,13 @@ def test_single_full():
     
     renderer = render_init()
     file_path = '/mnt/share/shenfeihong/data/smile_/C01001659595'
-    upper, lower, mid = load_up_low(file_path, show=False)
+    upper, lower, mid = load_up_low(file_path, 5, show=False)
+    # c_upper, c_lower, mid = load_up_low(file_path, 3, show=False)
+    
     zero_ = 0
     
-    model = TeethGenerator(256, 512, 8).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/080000.pt', map_location=lambda storage, loc: storage)
+    model = TeethGenerator(256, 256, 8).cuda()
+    ckpt_down = torch.load('./2022.12.13/edge/070000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     
     # trans = cls(n_channels=3).cuda()
@@ -66,12 +68,14 @@ def test_single_full():
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     tid_model = get_yolo('/mnt/share/shenfeihong/weight/pretrain')
-    sample_dir = '/mnt/share/shenfeihong/data/test/11.8.2022'
-    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.23/edge_test'
+    sample_dir = '/home/disk/data/smile_sim/tianshi/face'
+    save_path = './2022.12.13/test/tianshi'
 
     # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
     for file in os.listdir(sample_dir):
         img_path = os.path.join(sample_dir,file)
+        # img_path = '/home/meta/sfh/data/smile/40photo/C01008130798.jpg'
+        print(file)
         img_name = img_path.split('/')[-1].split('.')[0]
         image = cv2.imread(img_path)
         image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
@@ -98,6 +102,9 @@ def test_single_full():
         result = seg.predict(mouth)
 
         mask = (result[..., 0] > 0.6).astype(np.float32)
+        if np.sum(mask)<10:
+            print('w/o mouth')
+            continue
         big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
         cir_mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
 
@@ -111,6 +118,7 @@ def test_single_full():
         edge = (result[..., 1] > 0.6).astype(np.float32)
         up_edge = (result[..., 3] > 0.6).astype(np.float32)
         down_edge = (result[..., 2] > 0.6).astype(np.float32)
+        teeth_mask = (result[..., 0] > 0.6).astype(np.float32)
         
         # os.makedirs(f"{save_path}/{img_name}", exist_ok=True)
         # cv2.imwrite(f"{save_path}/{img_name}/up_edge.png", up_edge*255)
@@ -122,24 +130,35 @@ def test_single_full():
 
           
 
-        camera_x, camera_y, camera_z, dist_lower = parameter_pred(mouth,up_edge,down_edge,tid_model)
+        parameter = parameter_pred(mouth,up_edge,down_edge,teeth_mask,tid_model)
+        if not parameter:
+            continue
+        dist_lower = parameter['dist']
+        angle_z = parameter['anglez']
+        camera_x = parameter['camerax']
+        camera_y = parameter['cameray']
+        camera_z = parameter['cameraz']
+        x1 = parameter['x1']
+        x2 = parameter['x2']
         
-        dist_up = torch.tensor([zero_,zero_,zero_]).unsqueeze(0).cuda()
-        dist_down = torch.tensor([zero_,zero_,dist_lower]).unsqueeze(0).cuda()
-        angle = torch.tensor([zero_-1.396,zero_,zero_]).unsqueeze(0).cuda()
-        movement = torch.tensor([-camera_x, -camera_y, camera_z]).unsqueeze(0).cuda()
-        print(movement, angle, dist_down, dist_up)
         
+        dist_up = torch.tensor([zero_,zero_,zero_]).type(torch.float32).unsqueeze(0).cuda()
+        dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0).cuda()
+        angle = torch.tensor([zero_-1.35,zero_,angle_z]).type(torch.float32).unsqueeze(0).cuda()
+        movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0).cuda()
 
         pred_edge = render(renderer=renderer, upper=upper, lower=lower, mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], mid=mid)
         pred_edge = cv2.dilate(pred_edge, np.ones((3,3)))
+
+        pred_edge[:,:int(x1)]=0
+        pred_edge[:,int(x2):]=0
         cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge.astype(np.uint8)*255)
         cv2.imwrite(f"{save_path}/pred_edge/p_{img_name}.png", pred_edge)  
         
         pred_edge = torch.from_numpy((pred_edge/255).astype(np.float32)[None][None]).cuda()
         for i in range(10):
-            # sample_z = (torch.randn((1,512))).cuda()   
-            sample_z = torch.load(f'{save_path}/pth/5.pth').cuda()
+            sample_z = (torch.randn((1,512))).cuda()   
+            # sample_z = torch.load(f'{save_path}/pth/5.pth').cuda()
             
             # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{img_name}.pth')               
             sample, _ = model([sample_z], real_image=mouth_tensor, mask=cir_mask, edge=pred_edge)

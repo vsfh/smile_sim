@@ -51,7 +51,6 @@ def _edge_pred(tid, edgeu, edged, mask):
             angle = torch.tensor([zero_-1.396,zero_,zero_]).type(torch.float32).unsqueeze(0)
             movement = torch.tensor([zero_, zero_, 470]).type(torch.float32).unsqueeze(0)
             
-            print(dist_down, angle, movement)
             pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down])
             pred_edge = cv2.dilate(pred_edge, np.ones((2,2))) 
         
@@ -72,10 +71,12 @@ def _edge_pred(tid, edgeu, edged, mask):
 
     pos_left_mask = left_mask[left_mask>0]
     pos_right_mask = right_mask[right_mask>0]
+    
+    left_x = np.min(pos_left_mask)
+    right_x = np.max(pos_right_mask)
 
-    tanh = (np.max(pos_up_mask) - np.min(pos_up_mask)) / (np.max(pos_right_mask) - np.min(pos_left_mask))
+    tanh = (up_mask[int(left_x+1)] - up_mask[int(right_x-1)]) / (right_x - left_x)
     angle_z = np.arctan(tanh)
-    print(angle_z)
     
     pos_left_11 = left_11[left_11>0]
     pos_right_11 = right_11[right_11>0]
@@ -87,16 +88,23 @@ def _edge_pred(tid, edgeu, edged, mask):
     camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-3)/camera_dict['z_change']
     camera_y = (np.mean(down_11[down_11>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
 
-    camera_x = ((np.max(right_mask)+np.min(left_mask))/2-127)/camera_dict['y_change']
+    camera_x = ((left_x+right_x)/2-127)/camera_dict['y_change']
 
     # camera_x = ((np.max(right_11))-127)/camera_dict['y_change']
 
     # camera_x = camera_x.clip(-2.5,2.5)
     pos_edgeu_down = edgeu_down[edgeu_down>0]
+    pos_edgeu_up = edgeu_up[edgeu_up>0]
     pos_edged_up = edged_up[edged_up>0]
+    
     dist = np.mean(pos_edged_up[int(len(pos_edged_up)/3):int(len(pos_edged_up)/3*2)])\
                -np.mean(pos_edgeu_down[int(len(pos_edgeu_down)/3):int(len(pos_edgeu_down)/3*2)])
 
+    dist_mask_edgeu = np.mean(pos_edgeu_up[int(len(pos_edgeu_up)/3):int(len(pos_edgeu_up)/3*2)])\
+               -np.mean(pos_up_mask[int(len(pos_up_mask)/3):int(len(pos_up_mask)/3*2)])
+    print(dist_mask_edgeu)
+    camera_y = camera_y-dist_mask_edgeu/camera_dict['y_change']
+               
     if dist>threshold[0]:
         dist = dist+camera_dict['y_init_11_low']-camera_dict['y_init_31_up']
         dist_lower = dist/camera_dict['y_change']
@@ -106,7 +114,7 @@ def _edge_pred(tid, edgeu, edged, mask):
     zero_ = 0
     dist_up = torch.tensor([zero_,zero_,zero_]).type(torch.float32).unsqueeze(0)
     dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0)
-    angle = torch.tensor([zero_-1.396,zero_,-angle_z]).type(torch.float32).unsqueeze(0)
+    angle = torch.tensor([zero_-1.3,zero_,angle_z]).type(torch.float32).unsqueeze(0)
     movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0)
 
     pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down])

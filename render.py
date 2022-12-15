@@ -7,9 +7,9 @@ import numpy as np
 import trimesh
 # from teeth_arrangement.landmark_detection import extract_landmarks
 # from teeth_arrangement.tooth import GlobalTooth
-from natsort import natsorted
+# from natsort import natsorted
 from scipy.spatial.transform import Rotation as R
-import stl
+# import stl
 from pytorch3d.structures import Meshes, join_meshes_as_scene, join_meshes_as_batch
 from pytorch3d.renderer import (
     PerspectiveCameras, look_at_rotation,
@@ -17,7 +17,42 @@ from pytorch3d.renderer import (
     SoftSilhouetteShader, HardPhongShader, PointLights, TexturesVertex,
 )
 from pytorch3d.transforms import axis_angle_to_matrix
+import open3d as o3d
+import stl
+def load_single_teeth_mesh(data_file, id,half=True, sample=True, voxel_size=1.0):
+    mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_mesh(data_file)
 
+    mesh.remove_duplicated_vertices()
+    mesh.remove_duplicated_triangles()
+
+    mesh.compute_triangle_normals()
+    triangle_normals = np.asarray(mesh.triangle_normals)
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.triangles)
+
+    mesh.compute_triangle_normals()
+    if half:
+        vertices_center = (vertices[triangles[:, 0], 1] + vertices[triangles[:, 1], 1] + vertices[
+            triangles[:, 2], 1]) / 3
+        if id // 10 in [1, 3]:
+            mask = (vertices_center <= 0)
+        # mask = (vertices_center <= 0) & (rot_y <= 0)
+        else:
+            mask = (vertices_center >= 0)
+        # mask = (vertices_center >= 0) & (rot_y <= 0)
+
+        mesh.triangles = o3d.utility.Vector3iVector(
+            triangles[mask]
+        )
+        mesh.triangle_normals = o3d.utility.Vector3dVector(
+            triangle_normals[mask]
+        )
+
+    if sample:
+        # print(np.asarray(mesh.triangles).shape)
+        mesh = mesh.simplify_vertex_clustering(voxel_size=voxel_size)
+    # print(np.asarray(mesh.triangles).shape)
+    return mesh
 
 def meshes_to_tensor(meshes, device='cpu'):
     if not isinstance(meshes, list):
@@ -29,7 +64,7 @@ def meshes_to_tensor(meshes, device='cpu'):
         v = torch.tensor(np.asarray(m.vertices), dtype=torch.float32, device=device)
         verts.append(v)
 
-        f = torch.tensor(np.asarray(m.faces), dtype=torch.long, device=device)
+        f = torch.tensor(np.asarray(m.triangles), dtype=torch.long, device=device)
         faces.append(f)
     mesh_tensor = Meshes(
         verts=verts,
@@ -153,10 +188,10 @@ def render(renderer, upper, lower, mask, angle, movement, dist, mid):
     edge_align = draw_edge(upper, lower, renderer, dist, mask, mid, R, T)
     return edge_align
 
+import copy
 
-
-def load_up_low(teeth_folder_path, show=True):
-    num_teeth = 5
+def load_up_low(teeth_folder_path, num_teeth=5, show=True):
+    
     up_keys = list(range(11, 11 + num_teeth)) + list(range(21, 21 + num_teeth))
     down_keys = list(range(31, 31 + num_teeth)) + list(range(41, 41 + num_teeth))
     mid = 0
@@ -175,19 +210,22 @@ def load_up_low(teeth_folder_path, show=True):
         M[:3, :3] = r.as_matrix()
         M[3, 3] = 1
         mesh_path = os.path.join(teeth_folder_path, f'{filename}{tid}.stl')
-        stl.mesh.Mesh.from_file(mesh_path).save(mesh_path)
-        mesh = trimesh.load_mesh(mesh_path)
-        mesh.apply_transform(M)
+        # stl.mesh.Mesh.from_file(mesh_path).save(mesh_path)
+        mesh_t = load_single_teeth_mesh(mesh_path, tid)
+        # mesh = trimesh.load_mesh(mesh_path)
+        mesh = copy.deepcopy(mesh_t).transform(M)
         if tid in up_keys:
             mid += 1
             up_mesh_list.append(mesh)
         elif tid in down_keys:
             down_mesh_list.append(mesh)
 
-    upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
-    lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
-    up_mesh_list.append(upper)
-    down_mesh_list.append(lower)
+    # upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
+    # lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
+    # upper = upper.simplify_quadratic_decimation(200)
+    # lower = lower.simplify_quadratic_decimation(200)
+    # up_mesh_list.append(upper)
+    # down_mesh_list.append(lower)
     mesh_list = []
     mesh_list += up_mesh_list
     mesh_list += down_mesh_list
@@ -273,8 +311,8 @@ def draw_edge(upper, lower, renderer, dist, mask, mid, R, T):
 
 
 def deepmap_to_edgemap(teeth_gray, mid, mask, show=False):
-    teeth_gray[teeth_gray == mid+1] = 0
-    teeth_gray[teeth_gray == teeth_gray.max()] = 0
+    # teeth_gray[teeth_gray == mid+1] = 0
+    # teeth_gray[teeth_gray == teeth_gray.max()] = 0
     
     teeth_gray = teeth_gray*mask.detach().cpu().numpy()
     teeth_gray = teeth_gray[0][0]
@@ -315,7 +353,7 @@ def render_init():
         perspective_correct=True,
         cull_backfaces=True
     )
-    cameras = PerspectiveCameras(device='cuda', focal_length=14)
+    cameras = PerspectiveCameras(device='cuda', focal_length=12)
     renderer = MeshRenderer(
         rasterizer=MeshRasterizer(
             cameras=cameras,
