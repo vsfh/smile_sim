@@ -70,7 +70,6 @@ def face_rot(image, triton_client, height, width):
                             mode='xywh',
                             )
     angle = res[7][0][4]
-    print(angle)
     roundn = 0
     if angle-90>45:
         roundn = angle//90-1
@@ -111,7 +110,8 @@ def smile_sim_predict(
     height, width = image.shape[:2]
     roundn = face_rot(rot_image, triton_client, height, width)
     image = np.rot90(image, -roundn)
-    height, width = image.shape[:2]    
+    height, width = image.shape[:2]
+
     # step 1. find mouth obj
     objs = _find_objs(image, triton_client)
 
@@ -121,6 +121,7 @@ def smile_sim_predict(
         raise Exception("error image!")
 
     w, h = (x2 - x1), (y2 - y1)
+    w = w*1.25
     mouth_length = 256
     scale = mouth_length / max(w, h)
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
@@ -128,7 +129,7 @@ def smile_sim_predict(
     cx, cy = int(cx * scale), int(cy * scale)
     template_width, template_height = int(width * scale), int(height * scale)
     template = cv2.resize(image, (template_width, template_height))
-    half = mouth_length // 2
+    half = mouth_length//2
     mouth = template[cy - half:cy + half, cx - half:cx + half]
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
         return template
@@ -144,16 +145,22 @@ def smile_sim_predict(
     tid = _seg_tid(mouth, server_url)
     up_edge = (seg_result[..., 3] > 0.6).astype(np.float32)
     down_edge = (seg_result[..., 2] > 0.6).astype(np.float32)
-    edge = _edge_pred(tid, up_edge, down_edge, fg).astype(np.float32)
-        
+    edge = _edge_pred(tid, up_edge, down_edge, cv2.erode(fg, np.ones((5,5)))).astype(np.float32)
+       
     big_mask = cv2.dilate(fg, kernel=np.ones((3, 3)))
     mask = cv2.dilate(fg, kernel=np.ones((23, 23)))-big_mask
     mask = mask[...,None]
     big_mask = big_mask[...,None]
-    edge = edge[...,None]*fg[...,None]
+    edge = edge[...,None]/255
     input_image = mouth.astype(np.float32) / 255 * 2 - 1
-
-    input_dict = {'input_image':input_image,'mask':mask,'edge':edge,'big_mask':big_mask}
+    a = np.zeros((256,256,3))
+    a[...,0] = mask[...,0]*255
+    a[...,1] = edge[...,0]*255
+    cv2.imshow('fg', a.astype(np.uint8))
+    cv2.imshow('edge', edge.astype(np.uint8)*255)
+    
+    cv2.waitKey(0) 
+    input_dict = {'input_image':input_image,'mask':mask,'edge':edge,'big_mask':fg[...,None]}
     network_name = 'smile_sim_lip_preserve-up_net'
     aligned_mouth = _gan(input_dict, network_name, triton_client)
     aligned_mouth = aligned_mouth.clip(0,1)*255
@@ -163,15 +170,16 @@ def smile_sim_predict(
     # sample = mask*aligned_mouth+template[cy - half:cy + half, cx - half:cx + half]*(1-mask)
     template[cy - half:cy + half, cx - half:cx + half] = aligned_mouth
     image = cv2.resize(template, (width, height))
-    return image
+    return template
 
 if __name__=="__main__":
     import os
-    path = '/home/disk/data/test/smile/2022.12.13/40photo'
-    for file in os.listdir(path)[:1]:
+    path = '/home/meta/sfh/data/smile/40photo'
+    for file in os.listdir(path)[-1:]:
         if not os.path.isfile(os.path.join('./result', file)):
             print(file)
-            img_path = os.path.join(path,'BC01000007533.jpg')
+            img_path = os.path.join(path,file)
+            img_path = '/home/meta/sfh/data/smile/40photo/BC01000347150.jpg'
             image = cv2.imread(img_path)
             rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             # _, rot_image = cv2.imencode('.jpg',image)
@@ -182,5 +190,6 @@ if __name__=="__main__":
             output = smile_sim_predict(rot_image, rgb_image, server_url)
             output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
             
-            # cv2.imshow('img', output)
-            # cv2.waitKey(0)
+            cv2.imshow('img', output)
+            cv2.waitKey(0)
+            break

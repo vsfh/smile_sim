@@ -1,7 +1,7 @@
 import torch
-from train_less_encoder import PSP
-from encoders.psp_encoders import GradualStyleEncoder
-from cgan import TeethGenerator
+# from train_less_encoder import PSP
+# from encoders.psp_encoders import GradualStyleEncoder
+# from cgan import TeethGenerator
 import onnxruntime
 from utils import *
 
