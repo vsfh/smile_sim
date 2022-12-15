@@ -697,7 +697,23 @@ def mask_length(mask):
     upper_mask = np.min(lin_mask, 0)
     upper_mask[upper_mask==bg] = 0
     return upper_mask, lower_mask
-               
+     
+def narrow_edge(pred_edge, ori_width):
+    left_mask, right_mask = mask_width(pred_edge)
+    
+    pos_left_mask = left_mask[left_mask>0]
+    pos_right_mask = right_mask[right_mask>0]
+    
+    _mask_left_x = np.min(pos_left_mask)
+    _mask_right_x = np.max(pos_right_mask)
+    ratio = (ori_width-_mask_right_x+_mask_left_x)/ori_width
+    print(ratio, _mask_right_x-_mask_left_x, ori_width)
+    
+    if ratio>0.2:
+        return 1
+    else:
+        return 0
+              
 def parameter_pred(mouth, edgeu, edged, mask, model):
 
     threshold = [3, None, None]
@@ -726,7 +742,7 @@ def parameter_pred(mouth, edgeu, edged, mask, model):
     
     print(_mask_height,  _mask_width/_mask_height)
     
-    if _mask_height<20 or _mask_width/_mask_height>10:
+    if _mask_height<20 or _mask_width/_mask_height>7:
         print('narrow')
         return None
 
@@ -756,7 +772,10 @@ def parameter_pred(mouth, edgeu, edged, mask, model):
     angle_z = np.arctan(tanh)
     
     # mesh movement based front teeth width
-    tid = get_tid(model, mouth)
+    try:
+        tid = get_tid(model, mouth)
+    except:
+        return None
     tooth = np.zeros_like(tid)
     tooth[tid==11]=1
     if np.sum(tooth)<10:

@@ -6,7 +6,7 @@ from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
 from test import Yolo, Segmentation, sigmoid
-from tid_seg.models import get_yolo, parameter_pred, get_tid
+from tid_seg.models import get_yolo, parameter_pred, narrow_edge
 from utils import loose_bbox
 
 def noise():
@@ -68,13 +68,18 @@ def test_single_full():
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     tid_model = get_yolo('/mnt/share/shenfeihong/weight/pretrain')
-    sample_dir = '/home/disk/data/smile_sim/tianshi/face'
+    sample_dir = '/home/meta/sfh/data/smile/40photo'
+    # sample_dir = '/home/disk/data/smile_sim/tianshi/face'
     save_path = './2022.12.13/test/tianshi'
+    save_path = './2022.12.13/test/40photo'
+    
 
     # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
     for file in os.listdir(sample_dir):
         img_path = os.path.join(sample_dir,file)
-        # img_path = '/home/meta/sfh/data/smile/40photo/C01008130798.jpg'
+        # img_path = '/home/meta/sfh/data/smile/40photo/BC01000707138.jpeg'
+        # img_path = '/home/disk/data/smile_sim/tianshi/face/577912.jpg'
+        
         print(file)
         img_name = img_path.split('/')[-1].split('.')[0]
         image = cv2.imread(img_path)
@@ -144,29 +149,32 @@ def test_single_full():
         
         dist_up = torch.tensor([zero_,zero_,zero_]).type(torch.float32).unsqueeze(0).cuda()
         dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0).cuda()
-        angle = torch.tensor([zero_-1.35,zero_,angle_z]).type(torch.float32).unsqueeze(0).cuda()
+        angle = torch.tensor([zero_-1.396,zero_,angle_z]).type(torch.float32).unsqueeze(0).cuda()
         movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0).cuda()
 
         pred_edge = render(renderer=renderer, upper=upper, lower=lower, mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], mid=mid)
-        pred_edge = cv2.dilate(pred_edge, np.ones((3,3)))
 
+        if narrow_edge(pred_edge/255, x2-x1):
+            continue
+        
         pred_edge[:,:int(x1)]=0
         pred_edge[:,int(x2):]=0
+        
         cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge.astype(np.uint8)*255)
         cv2.imwrite(f"{save_path}/pred_edge/p_{img_name}.png", pred_edge)  
         
         pred_edge = torch.from_numpy((pred_edge/255).astype(np.float32)[None][None]).cuda()
-        for i in range(10):
-            sample_z = (torch.randn((1,512))).cuda()   
-            # sample_z = torch.load(f'{save_path}/pth/5.pth').cuda()
+        for i in range(50):
+            # sample_z = (torch.randn((1,256))).cuda()   
+            sample_z = torch.load(f'./2022.12.13/test/tianshi/pth/20.pth').cuda()
             
-            # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{img_name}.pth')               
+            # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{i}.pth')               
             sample, _ = model([sample_z], real_image=mouth_tensor, mask=cir_mask, edge=pred_edge)
             sample = big_mask*sample+(1-big_mask)*mouth_tensor
             
             sample = sample[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
-            cv2.imwrite(f"{save_path}/all/out_{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))  
+            cv2.imwrite(f"{save_path}/all/out_{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
             break
         # break
 

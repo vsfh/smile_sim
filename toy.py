@@ -47,18 +47,18 @@ def noise():
 def test_single_full():
     from cgan import TeethGenerator
     model = TeethGenerator(256, 256, 8).cuda()
-    ckpt_down = torch.load('./2022.12.13/040000.pt', map_location=lambda storage, loc: storage)
+    ckpt_down = torch.load('./2022.12.13/wo_edge/040000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     sample_dir = '/home/meta/sfh/data/smile/40photo'
-    save_path = './2022.12.13/test'
+    save_path = './2022.12.13/wo_edge/test'
     for i in range(100):
-        sample_z = torch.randn((1,256)).cuda()*0.5+0.5
-        # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
+        # sample_z = torch.randn((1,256)).cuda()
+        sample_z = torch.load(f'{save_path}/pth/31.pth').cuda()
         for file in os.listdir(sample_dir):
             img_path = os.path.join(sample_dir,file)
-            img_path = os.path.join(sample_dir,'C01008130798.jpg')
+            img_path = '/home/meta/sfh/data/smile/40photo/BC01000627274.jpg'
             image = cv2.imread(img_path)
             image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             height, width = image.shape[:2]
@@ -97,8 +97,8 @@ def test_single_full():
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
             img_name = img_path.split('/')[-1].split('.')[0]
             
-            cv2.imwrite(f"{save_path}/_{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
-            # torch.save(sample_z.detach().cpu(),f'{save_path}/_{i}.pth')
+            cv2.imwrite(f"{save_path}/single/{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+            # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{i}.pth')
             break
         
             # cv2.imwrite(f"{save_path}/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))

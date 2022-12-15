@@ -197,6 +197,8 @@ def load_up_low(teeth_folder_path, num_teeth=5, show=True):
     mid = 0
     up_mesh_list = []
     down_mesh_list = []
+    if show:
+        show_list = []
 
     text_file = 'TeethAxis_T2.txt'
     filename = 'tooth'
@@ -212,7 +214,10 @@ def load_up_low(teeth_folder_path, num_teeth=5, show=True):
         mesh_path = os.path.join(teeth_folder_path, f'{filename}{tid}.stl')
         # stl.mesh.Mesh.from_file(mesh_path).save(mesh_path)
         mesh_t = load_single_teeth_mesh(mesh_path, tid)
-        # mesh = trimesh.load_mesh(mesh_path)
+        if show:
+            s_mesh = trimesh.load_mesh(mesh_path)
+            s_mesh.apply_transform(M)
+            show_list.append(s_mesh)
         mesh = copy.deepcopy(mesh_t).transform(M)
         if tid in up_keys:
             mid += 1
@@ -232,7 +237,7 @@ def load_up_low(teeth_folder_path, num_teeth=5, show=True):
 
 
     if show:
-        trimesh.Scene(mesh_list).show()
+        trimesh.Scene(show_list).show()
 
     return up_mesh_list, down_mesh_list, mid
 
@@ -307,7 +312,10 @@ def draw_edge(upper, lower, renderer, dist, mask, mid, R, T):
     # cv2.waitKey(0)
 
     up_edge, low_edge, all_edge = deepmap_to_edgemap(teeth_gray, mid, mask, show=False)
-    return all_edge
+    low_edge = cv2.dilate(low_edge, np.ones((4,4)))
+    up_edge = cv2.dilate(up_edge, np.ones((3,3)))
+    
+    return up_edge+low_edge
 
 
 def deepmap_to_edgemap(teeth_gray, mid, mask, show=False):
