@@ -160,14 +160,11 @@ def _edge_pred(parameter, mask):
     angle = torch.tensor([zero_-1.396,zero_,angle_z]).type(torch.float32).unsqueeze(0)
     movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0)
 
-    pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down])
+    pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], x1=x1,x2=x2)
     pred_edge = cv2.dilate(pred_edge, np.ones((3,3))) 
 
     if narrow_edge(pred_edge/255, x2-x1):
         return None
-    
-    pred_edge[:,:int(x1)]=0
-    pred_edge[:,int(x2):]=0
     return pred_edge
 
 def narrow_edge(pred_edge, ori_width):

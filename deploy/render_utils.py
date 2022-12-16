@@ -14,7 +14,7 @@ from scipy.spatial.transform import Rotation as R
 import time
 import open3d as o3d
 import copy
-def draw_edge(upper, lower, renderer, dist, mask, R, T, mid):
+def draw_edge(upper, lower, renderer, dist, mask, R, T, mid, x1,x2):
     start_time = time.time()
     upper = meshes_to_tensor(upper)
     lower = meshes_to_tensor(lower)
@@ -28,6 +28,9 @@ def draw_edge(upper, lower, renderer, dist, mask, R, T, mid):
 
     teeth_gray = deepmap.astype(np.uint8)
     teeth_gray = cv2.resize(teeth_gray, (256,256), interpolation = cv2.INTER_AREA)
+    
+    teeth_gray[:,:int(x1)]=0
+    teeth_gray[:,int(x2):]=0
 
     up_edge, low_edge, all_edge = deepmap_to_edgemap(teeth_gray, mid, mask, show=False)
     return all_edge
@@ -177,10 +180,10 @@ class renderer:
         self.upper = upper
         self.lower = lower
         self.mid = mid
-    def para_edge(self, mask, angle, movement, dist):
+    def para_edge(self, mask, angle, movement, dist, x1,x2):
         R = axis_angle_to_matrix(angle)
         T = movement
-        edge_align = draw_edge(self.upper, self.lower, self.model, dist, mask, R, T, self.mid)
+        edge_align = draw_edge(self.upper, self.lower, self.model, dist, mask, R, T, self.mid, x1,x2)
         return edge_align
 
 render = renderer()

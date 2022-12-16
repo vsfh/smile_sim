@@ -1,5 +1,5 @@
-# from cgan import TeethGenerator
-from edge_gan import TeethGenerator
+from cgan import TeethGenerator
+# from edge_gan import TeethGenerator
 from encoders.psp_encoders import GradualStyleEncoder
 import torch
 import torch.nn as nn
@@ -27,7 +27,7 @@ class Gen(nn.Module):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
         self.decoder = TeethGenerator(256, 256, n_mlp=8).cuda()
-        self.sample_z = torch.load('./2022.12.13/test/tianshi/pth/20.pth').cuda()
+        self.sample_z = torch.load('./2022.12.13/edge/test/pth/51.pth').cuda()
 
     def forward(self, real_img, mask,edge, big_mask):
         sample_z = [self.decoder.style(self.sample_z)]
@@ -68,19 +68,21 @@ def convert_to_onnx():
     input3 = torch.randn(1, 1, 256, 256).cuda()
     input4 = torch.randn(1, 1, 256, 256).cuda()
     
-    model = Gen().eval().cuda()
-    ckpt_decoder = './2022.12.13/edge/070000.pt'
-    # model = Gen_wo_edge().eval().cuda()
-    # ckpt_decoder = './2022.12.13/wo_edge/040000.pt'
+    # model = Gen().eval().cuda()
+    # ckpt_decoder = '/mnt/share/shenfeihong/tmp/040000.pt'
+    
+    model = Gen_wo_edge().eval().cuda()
+    ckpt_decoder = './2022.12.13/wo_edge/040000.pt'
+    
     ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
     # ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
     model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
     # model.psp_encoder.load_state_dict(ckpt_encoder_)
     input_name = ['input_image','mask','edge','big_mask']
-    # input_name = ['input_image','mask','big_mask']
+    input_name = ['input_image','mask','big_mask']
     
     output_name = ['align_img']
-    torch.onnx.export(model, (input1, input2, input3, input4), output_path, export_params=True, input_names=input_name, output_names=output_name,
+    torch.onnx.export(model, (input1, input2, input3), output_path, export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=13, dynamic_axes=dynamic_axes)
 import cv2
 import numpy as np

@@ -19,7 +19,7 @@ from pytorch3d.renderer import (
 from pytorch3d.transforms import axis_angle_to_matrix
 import open3d as o3d
 import stl
-def load_single_teeth_mesh(data_file, id,half=True, sample=True, voxel_size=1.0):
+def load_single_teeth_mesh(data_file, id=0,half=True, sample=True, voxel_size=1.0):
     mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_mesh(data_file)
 
     mesh.remove_duplicated_vertices()
@@ -225,12 +225,10 @@ def load_up_low(teeth_folder_path, num_teeth=5, show=True):
         elif tid in down_keys:
             down_mesh_list.append(mesh)
 
-    # upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
-    # lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
-    # upper = upper.simplify_quadratic_decimation(200)
-    # lower = lower.simplify_quadratic_decimation(200)
-    # up_mesh_list.append(upper)
-    # down_mesh_list.append(lower)
+    upper = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'), half=False)
+    lower = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'), half=False)
+    up_mesh_list.append(upper)
+    down_mesh_list.append(lower)
     mesh_list = []
     mesh_list += up_mesh_list
     mesh_list += down_mesh_list
@@ -312,15 +310,15 @@ def draw_edge(upper, lower, renderer, dist, mask, mid, R, T):
     # cv2.waitKey(0)
 
     up_edge, low_edge, all_edge = deepmap_to_edgemap(teeth_gray, mid, mask, show=False)
-    low_edge = cv2.dilate(low_edge, np.ones((4,4)))
+    low_edge = cv2.dilate(low_edge, np.ones((3,3)))
     up_edge = cv2.dilate(up_edge, np.ones((3,3)))
     
     return up_edge+low_edge
 
 
 def deepmap_to_edgemap(teeth_gray, mid, mask, show=False):
-    # teeth_gray[teeth_gray == mid+1] = 0
-    # teeth_gray[teeth_gray == teeth_gray.max()] = 0
+    teeth_gray[teeth_gray == mid+1] = 0
+    teeth_gray[teeth_gray == teeth_gray.max()] = 0
     
     teeth_gray = teeth_gray*mask.detach().cpu().numpy()
     teeth_gray = teeth_gray[0][0]

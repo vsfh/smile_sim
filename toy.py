@@ -55,10 +55,10 @@ def test_single_full():
     save_path = './2022.12.13/wo_edge/test'
     for i in range(100):
         # sample_z = torch.randn((1,256)).cuda()
-        sample_z = torch.load(f'{save_path}/pth/31.pth').cuda()
+        sample_z = torch.load(f'{save_path}/pth/95.pth').cuda()
         for file in os.listdir(sample_dir):
             img_path = os.path.join(sample_dir,file)
-            img_path = '/home/meta/sfh/data/smile/40photo/BC01000627274.jpg'
+            img_path = '/home/meta/sfh/data/smile/40photo/BC01000237226.jpg'
             image = cv2.imread(img_path)
             image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             height, width = image.shape[:2]
@@ -86,7 +86,7 @@ def test_single_full():
             mask = (result[..., 0] > 0.6).astype(np.float32)
             cv2.imwrite(f"{save_path}/mask.png", mask.astype(np.uint8)*255)
             big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
-            mask = cv2.dilate(mask, kernel=np.ones((33, 33)))-big_mask
+            mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
             mask = torch.from_numpy(mask.astype(np.float32)[None][None]).cuda()
             mouth_tensor = mouth/255*2-1
             mouth_tensor = torch.from_numpy(mouth_tensor.transpose(2,0,1).astype(np.float32)[None]).cuda()
@@ -97,7 +97,7 @@ def test_single_full():
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
             img_name = img_path.split('/')[-1].split('.')[0]
             
-            cv2.imwrite(f"{save_path}/single/{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+            cv2.imwrite(f"{save_path}/single/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
             # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{i}.pth')
             break
         

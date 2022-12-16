@@ -168,7 +168,7 @@ def smile_sim_predict(
     # cv2.imshow('edge', edge.astype(np.uint8)*255)
     # cv2.waitKey(0) 
     if not parameter:
-        cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
+        # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
         input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
         network_name = 'new_smile_wo_edge_gan'
     else:
@@ -178,7 +178,7 @@ def smile_sim_predict(
             input_dict = {'input_image':input_image,'mask':cir_mask,'edge':edge,'big_mask':big_mask}
             network_name = 'smile_sim_lip_preserve-up_net'
         else:
-            cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
+            # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
             input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
             network_name = 'new_smile_wo_edge_gan'
             
@@ -194,20 +194,20 @@ if __name__=="__main__":
     import os
     path = '/home/meta/sfh/data/smile/40photo'
     for file in os.listdir(path):
-        if not os.path.isfile(os.path.join('./result', file)):
-            print(file)
-            img_path = os.path.join(path,file)
-            # img_path = '/home/meta/sfh/data/smile/40photo/BC01000347150.jpg'
-            image = cv2.imread(img_path)
-            rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            # _, rot_image = cv2.imencode('.jpg',image)
-            server_url = '0.0.0.0:8001'
-            
-            with open(img_path, 'rb') as f:
-                rot_image = f.read()
-            output = smile_sim_predict(rot_image, rgb_image, server_url)
-            output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
-            
-            cv2.imwrite(os.path.join('./result', file), output)
+        # if not os.path.isfile(os.path.join('./result', file)):
+        print(file)
+        img_path = os.path.join(path,file)
+        # img_path = '/home/meta/sfh/data/smile/40photo/BC01000347150.jpg'
+        image = cv2.imread(img_path)
+        rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        # _, rot_image = cv2.imencode('.jpg',image)
+        server_url = '0.0.0.0:8001'
+        
+        with open(img_path, 'rb') as f:
+            rot_image = f.read()
+        output = smile_sim_predict(rot_image, rgb_image, server_url)
+        output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
+        
+        cv2.imwrite(os.path.join('./result', file), output)
             # cv2.waitKey(0)
             # break
