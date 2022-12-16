@@ -91,7 +91,42 @@ def meshes_to_tensor(meshes, device='cpu'):
         # textures=textures
     )
     return mesh_tensor
-        
+  
+def load_single_teeth_mesh(data_file, id=0,half=True, sample=True, voxel_size=1.0):
+    mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_mesh(data_file)
+
+    mesh.remove_duplicated_vertices()
+    mesh.remove_duplicated_triangles()
+
+    mesh.compute_triangle_normals()
+    triangle_normals = np.asarray(mesh.triangle_normals)
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.triangles)
+
+    mesh.compute_triangle_normals()
+    if half:
+        vertices_center = (vertices[triangles[:, 0], 1] + vertices[triangles[:, 1], 1] + vertices[
+            triangles[:, 2], 1]) / 3
+        if id // 10 in [1, 3]:
+            mask = (vertices_center <= 0)
+        # mask = (vertices_center <= 0) & (rot_y <= 0)
+        else:
+            mask = (vertices_center >= 0)
+        # mask = (vertices_center >= 0) & (rot_y <= 0)
+
+        mesh.triangles = o3d.utility.Vector3iVector(
+            triangles[mask]
+        )
+        mesh.triangle_normals = o3d.utility.Vector3dVector(
+            triangle_normals[mask]
+        )
+
+    if sample:
+        # print(np.asarray(mesh.triangles).shape)
+        mesh = mesh.simplify_vertex_clustering(voxel_size=voxel_size)
+    # print(np.asarray(mesh.triangles).shape)
+    return mesh
+      
 def load_up_low(teeth_folder_path, show=True):
     num_teeth = 5
     up_keys = list(range(11, 11 + num_teeth)) + list(range(21, 21 + num_teeth))
@@ -112,10 +147,8 @@ def load_up_low(teeth_folder_path, show=True):
         M[:3, :3] = r.as_matrix()
         M[3, 3] = 1
         mesh_path = os.path.join(teeth_folder_path, f'{filename}{tid}.stl')
-        mesh = trimesh.load_mesh(mesh_path)
-        mesh.apply_transform(M)
-        
-        mesh = mesh.simplify_quadratic_decimation(100)
+        mesh_t = load_single_teeth_mesh(mesh_path, tid)
+        mesh = copy.deepcopy(mesh_t).transform(M)
         
         if tid in up_keys:
             mid += 1
@@ -123,16 +156,13 @@ def load_up_low(teeth_folder_path, show=True):
         elif tid in down_keys:
             down_mesh_list.append(mesh)
 
-    upper = trimesh.load_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'))
-    upper = upper.simplify_quadratic_decimation(100)
-    lower = trimesh.load_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'))
-    lower = lower.simplify_quadratic_decimation(50)
+    upper = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'), half=False)
+    lower = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'), half=False)
     up_mesh_list.append(upper)
     down_mesh_list.append(lower)
     mesh_list = []
     mesh_list += up_mesh_list
     mesh_list += down_mesh_list
-
 
     if show:
         trimesh.Scene(mesh_list).show()

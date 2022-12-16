@@ -135,7 +135,7 @@ class TeethGenerator(nn.Module):
 
             self.convs.append(
                 StyledConv(
-                    in_channel,
+                    in_channel*2,
                     out_channel,
                     3,
                     style_dim,
@@ -244,7 +244,7 @@ class TeethGenerator(nn.Module):
         ):
 
             # if i<7:
-            out = (out + geometry_features[-(i//2 + 1)])/2
+            out = torch.cat([out, geometry_features[-(i // 2 + 1)]], dim=1)
             out = conv1(out, latent[:, i], noise=noise1)
             out = conv2(out, latent[:, i + 1], noise=noise2)
             skip = to_rgb(out, latent[:, i + 2], skip)

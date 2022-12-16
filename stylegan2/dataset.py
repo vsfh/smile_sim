@@ -456,7 +456,8 @@ class fuck(Dataset):
         else:
             self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
             self.all_files =  glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
-                                    glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')
+                                    glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')+\
+                                        glob.glob('/mnt/share/shenfeihong/data/smile_/smile_ffhq_2000+_seg/*/mouth.jpg')
 
             self.transform = transforms.Compose(
                                 [
@@ -499,8 +500,10 @@ class fuck(Dataset):
         
         ##edge
         fdir = frame_file.split('/')[-3]
-
-        edge = Image.open(frame_file.replace(f_name,'edge.png'))
+        if fdir[-1]=='g':
+            edge = Image.open(frame_file.replace(f_name,'TeethEdge.png'))
+        else:
+            edge = Image.open(frame_file.replace(f_name,'edge.png'))
 
         edge = np.array(edge)/255
         if len(edge.shape) == 3:
