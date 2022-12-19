@@ -1,4 +1,4 @@
-from train_encoder import PSP
+from encoder_train import PSP
 from PIL import Image
 import numpy as np
 import torch
@@ -14,16 +14,15 @@ sess = onnxruntime.InferenceSession('model_single.onnx',
                                             'CPUExecutionProvider']) 
 yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
 seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
-save_path = '/mnt/share/shenfeihong/data/test/11.9.2022.res'
 
-ckpt_encoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/encoder_ckpt/1.pkl'
-ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.8/100000.pt'
-psp = PSP(256,512,8).cuda()
-ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
+
+ckpt_encoder = './2022.12.13/encoder/ckpt/13.pt'
+ckpt = '/mnt/share/shenfeihong/tmp/wo_edge/040000.pt'
+
+pl_model = PSP(ckpt=ckpt).cuda()
 ckpt_encoder_ = torch.load(ckpt_encoder, map_location=lambda storage, loc: storage)
-psp.decoder.load_state_dict(ckpt_decoder_["g_ema"])
-psp.psp_encoder.load_state_dict(ckpt_encoder_)
-def test_single_full(img_path):
+pl_model.psp_encoder.load_state_dict(ckpt_encoder_)
+def test_single_full(img_path, save_path):
 
     image = cv2.imread(img_path)
     image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
@@ -48,12 +47,12 @@ def test_single_full(img_path):
     result = seg.predict(mouth)
 
     mask = (result[..., 0] > 0.6).astype(np.float32)
-    mask = cv2.dilate(mask, kernel=np.ones((30, 30)))-cv2.dilate(mask, kernel=np.ones((3, 3)))
+    mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-cv2.dilate(mask, kernel=np.ones((3, 3)))
     mask = torch.from_numpy(mask.astype(np.float32)[None][None]).cuda()
     mouth = mouth/255*2-1
     mouth = torch.from_numpy(mouth.transpose(2,0,1).astype(np.float32)[None]).cuda()
     print(mask.shape, mouth.shape)
-    img,_ = psp(mouth, mask, mix=True)
+    img,_ = pl_model(mouth, mask, mix=True)
     utils.save_image(
         img,
         f"{save_path}/{img_path.split('/')[-1]}",
@@ -100,8 +99,9 @@ def onnx_test(img_path):
     cv2.imwrite(f"{save_path}/{img_path.split('/')[-1]}", cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
     
 import os
-path = '/mnt/share/shenfeihong/data/test/11.8.2022'
-for file in os.listdir(path):
-    test_single_full(os.path.join(path, file))
+sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
+save_path = './2022.12.13/encoder/test'
+for file in os.listdir(sample_dir):
+    test_single_full(os.path.join(sample_dir, file), save_path)
     # break
     

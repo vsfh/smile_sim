@@ -443,29 +443,20 @@ class SimulationDataset(Dataset):
 
 class fuck(Dataset):
     def __init__(self, mode='decoder'):
-        if mode == 'encoder':
-            self.all_files = glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg', recursive=False)[10:]
-            self.transform = transforms.Compose(
-                                [
-                                    transforms.Resize([256,256]),
-                                    transforms.ToTensor(),
-                                    # transforms.RandomHorizontalFlip(p=0.5)
-                                    
-                                ]
-                        )       
-        else:
-            self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
-            self.all_files =  glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
-                                    glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')+\
-                                        glob.glob('/mnt/share/shenfeihong/data/smile_/smile_ffhq_2000+_seg/*/mouth.jpg')
+   
 
-            self.transform = transforms.Compose(
-                                [
-                                    transforms.Resize([256,256]),
-                                    transforms.ToTensor()
-                                    
-                                ]
-                        )
+        self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
+        self.all_files =  glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
+                                glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')+\
+                                    glob.glob('/mnt/share/shenfeihong/data/smile_/smile_ffhq_2000+_seg/*/mouth.jpg')
+
+        self.transform = transforms.Compose(
+                            [
+                                transforms.Resize([256,256]),
+                                transforms.ToTensor()
+                                
+                            ]
+                    )
         print('total image:', len(self.all_files))
         self.mode = mode
     

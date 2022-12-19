@@ -200,7 +200,7 @@ if __name__ == "__main__":
         drop_last=True,
     )
 
-    from train_encoder import PSPModel
+    from encoder_train import PSPModel
     # pl_model = PSPModel(ckpt=r'checkpoint/085000.pt')
     ckpt = r'weights/encoder/version_0/checkpoints/global_steps=00-val_loss=0.020685.ckpt'
     state_dict = torch.load(ckpt)
