@@ -446,7 +446,7 @@ if __name__ == "__main__":
 
     args.latent = 256
     args.n_mlp = 1
-    args.weight_dir = './2022.12.13'
+    args.weight_dir = './2022.12.19_wo_edge'
     args.start_iter = 0
 
 

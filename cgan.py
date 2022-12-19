@@ -229,16 +229,15 @@ class TeethGenerator(nn.Module):
                 latent = styles[0]
 
         else:
-            # print('b')
+
             if inject_index is None:
                 inject_index = random.randint(1, self.n_latent - 1)
-                # inject_index = 1
 
-            # latent = styles[0][:, :inject_index, :]
             latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
             latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
 
             latent = torch.cat([latent, latent2], 1)
+
 
         geometry_features = self.geometry_encoder(real_image * mask)
 
@@ -333,10 +332,11 @@ class Discriminator(nn.Module):
 
 if __name__ == '__main__':
 
-    model = TeethGenerator(256, 256, 8)
-    sample = torch.randn(4,256)
+    model = TeethGenerator(256, 256, 1)
+    sample = torch.randn(4,14, 256)
     image = torch.randn(4,3,256,256)
     mask = torch.randn(4,1,256,256)
-    model(image, image, mask)
+    img, _ = model([sample], image, mask, input_is_latent=True)
+    print(img.shape)
     
 
