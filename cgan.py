@@ -156,7 +156,7 @@ class TeethGenerator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        # self.img_proj = nn.Linear(256,1)
+        self.img_proj = nn.Linear(256,14)
 
     def make_noise(self):
         device = self.input.input.device
@@ -182,7 +182,7 @@ class TeethGenerator(nn.Module):
 
     def forward(
             self,
-            styles,
+            styles=None,
             real_image=None,
             mask=None,
             return_latents=False,
@@ -195,10 +195,10 @@ class TeethGenerator(nn.Module):
             input_img=False
     ):
         if input_img:
-            styles = [self.img_proj(real_image.mean(1))[...,0]]
+            styles = [self.img_proj(real_image.mean(1)).view(-1,14,256)]
 
-        if not input_is_latent:
-            styles = [self.style(s) for s in styles]
+        # if not input_is_latent:
+        #     styles = [self.style(s) for s in styles]
 
         if noise is None:
             if randomize_noise:
@@ -336,7 +336,7 @@ if __name__ == '__main__':
     sample = torch.randn(4,14, 256)
     image = torch.randn(4,3,256,256)
     mask = torch.randn(4,1,256,256)
-    img, _ = model([sample], image, mask, input_is_latent=True)
+    img, _ = model(image, image, mask, input_img=True)
     print(img.shape)
     
 

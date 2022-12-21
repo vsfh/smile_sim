@@ -37,6 +37,9 @@ class PSP(pl.LightningModule):
         self.w_norm_lambda = 0.0
         self.l2_lambda = 1.0
         self.moco_lambda = 0.
+        
+        self.avg_latent = self.decoder.style(torch.randn(1,256)).detach().unsqueeze(0).repeat(1,14,1).cuda()
+        print(self.avg_latent.shape)
 
     def forward(self, real_img, mask, big_mask=None, mix=False,
                 input_code=False, randomize_noise=False,
@@ -44,11 +47,11 @@ class PSP(pl.LightningModule):
         
         codes = self.psp_encoder(real_img)
         input_is_latent = not input_code
-        images, result_latent = self.decoder([codes], real_image=real_img, mask=mask,
+        images, result_latent = self.decoder([codes+self.avg_latent.repeat(codes.shape[0], 1, 1)], real_image=real_img, mask=mask,
                                              input_is_latent=input_is_latent,
                                              randomize_noise=randomize_noise,
                                              return_latents=return_latents)
-        # images = real_img*(1-big_mask)+images*big_mask
+        images = real_img*(1-big_mask)+images*big_mask
         return images, result_latent
 
     def training_step(self, batch, batch_idx):
@@ -88,10 +91,10 @@ class PSP(pl.LightningModule):
     def get_loss(self, batch, mode):
         img = batch['images']
         mask = batch['mask']
-        # big_mask = batch['big_mask']
+        big_mask = batch['big_mask']
         
 
-        y_hat, latent = self.forward(img, mask, return_latents=True)
+        y_hat, latent = self.forward(img, mask, big_mask, return_latents=True)
 
         loss, loss_dict, id_logs = self.calc_loss(img, img, y_hat , latent)
         if not mode%100:

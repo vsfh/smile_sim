@@ -173,7 +173,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
 
         real_batch = next(loader)
         real_img = real_batch['images'].to(device)
-        mask = real_batch['mask'].to(device)
+        mask = 1-real_batch['big_mask'].to(device)
 
         requires_grad(generator, False)
         requires_grad(discriminator, True)
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         "--iter", type=int, default=800000, help="total training iterations"
     )
     parser.add_argument(
-        "--batch", type=int, default=2, help="batch sizes for each gpus"
+        "--batch", type=int, default=4, help="batch sizes for each gpus"
     )
     parser.add_argument(
         "--n_sample",
@@ -445,8 +445,8 @@ if __name__ == "__main__":
         synchronize()
 
     args.latent = 256
-    args.n_mlp = 1
-    args.weight_dir = './2022.12.19_wo_edge'
+    args.n_mlp = 8
+    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20'
     args.start_iter = 0
 
 

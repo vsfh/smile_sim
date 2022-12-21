@@ -137,3 +137,5 @@ dmypy.json
 *.png
 *.jpeg
 *.JPG
+*.yaml
+*.0

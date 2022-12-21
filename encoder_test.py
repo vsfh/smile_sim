@@ -16,7 +16,7 @@ yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
 seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
 
 
-ckpt_encoder = './2022.12.13/encoder/ckpt/13.pt'
+ckpt_encoder = './2022.12.13/encoder/ckpt/10.pt'
 ckpt = '/mnt/share/shenfeihong/tmp/wo_edge/040000.pt'
 
 pl_model = PSP(ckpt=ckpt).cuda()
@@ -47,12 +47,15 @@ def test_single_full(img_path, save_path):
     result = seg.predict(mouth)
 
     mask = (result[..., 0] > 0.6).astype(np.float32)
-    mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-cv2.dilate(mask, kernel=np.ones((3, 3)))
+    big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
+    mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
     mask = torch.from_numpy(mask.astype(np.float32)[None][None]).cuda()
+    big_mask = torch.from_numpy(big_mask.astype(np.float32)[None][None]).cuda()
+    
     mouth = mouth/255*2-1
     mouth = torch.from_numpy(mouth.transpose(2,0,1).astype(np.float32)[None]).cuda()
     print(mask.shape, mouth.shape)
-    img,_ = pl_model(mouth, mask, mix=True)
+    img,_ = pl_model(mouth, mask,big_mask, mix=True)
     utils.save_image(
         img,
         f"{save_path}/{img_path.split('/')[-1]}",
@@ -85,8 +88,8 @@ def onnx_test(img_path):
 
     mask = (result[..., 0] > 0.6).astype(np.float32)
     # big_mask = cv2.dilate(mask, kernel=np.ones((2, 2)))
-    big_mask = mask
-    mask = cv2.dilate(mask, kernel=np.ones((30, 30)))-big_mask
+    big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
+    mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
 
     mask = mask.astype(np.float32)[None][None]
     big_mask = big_mask.astype(np.float32)[None][None]  
