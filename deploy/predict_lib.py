@@ -41,7 +41,19 @@ def _find_objs(image, triton_client):
     objs = np.array(objs, dtype=np.int)
     return objs
 
-
+def _face_mid(image, show=False):
+    from face_mid import pipeline
+    import asyncio
+    pipeline.show = show
+    pred_coro = pipeline.predict_image_async(image)
+    res = asyncio.run(pred_coro)
+    v1 = res['ly']['V1']
+    v2 = res['ly']['V2']
+    
+    target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
+    target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
+    return target_x
+    
 def _seg_mouth(image, triton_client):
     seg_input_shape = (256, 256)
     resized_image, _ = utils.resize_and_pad(image, seg_input_shape)
@@ -69,11 +81,26 @@ def face_rot(image, triton_client, height, width):
                             with_deg=True,
                             mode='xywh',
                             )
+
+    # if len(res)<8:
+    #     raise Exception("error image rot")
+    # elif len(res[7])<1:
+    #     raise Exception("error image rot")
+    # elif len(res[7][0])<5:
+    #     raise Exception("error image rot")
+    if len(res)<8:
+        return 0
+    elif len(res[7])<1:
+        return 0
+    elif len(res[7][0])<5:
+        return 0
     angle = res[7][0][4]
     roundn = 0
-    if angle-90>45:
-        roundn = angle//90-1
-        roundn += int(angle%90>45)
+    angle = angle -90
+    if angle < 0:
+        angle += 360
+        
+    roundn = int(round(angle / 90)) % 4
     return roundn
 
 def _seg_tid(image, triton_client):
@@ -119,6 +146,8 @@ def smile_sim_predict(
     x1, y1, x2, y2 = mouth_objs
     if x1==x2 and y1==y2:
         raise Exception("error image!")
+    
+    
 
     w, h = (x2 - x1), (y2 - y1)
     
@@ -132,6 +161,8 @@ def smile_sim_predict(
     x, y = int(x1 * 128 / half), int(y1 * 128 / half) + 2
 
     template = cv2.resize(image, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
+    
+    mid_x = _face_mid(template, False)
     mouth = template[y: y + 256, x: x + 256]
     
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
@@ -150,7 +181,7 @@ def smile_sim_predict(
     
     try:
         tid = _seg_tid(mouth, server_url)
-        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid)
+        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid,mid_x-x)
     except:
         parameter = None
        
@@ -197,7 +228,7 @@ if __name__=="__main__":
         # if not os.path.isfile(os.path.join('./result', file)):
         print(file)
         img_path = os.path.join(path,file)
-        # img_path = '/home/meta/sfh/data/smile/40photo/BC01000347150.jpg'
+        img_path = '/mnt/share/shenfeihong/tmp/image (3).png'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         # _, rot_image = cv2.imencode('.jpg',image)
@@ -208,6 +239,7 @@ if __name__=="__main__":
         output = smile_sim_predict(rot_image, rgb_image, server_url)
         output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
         
-        cv2.imwrite(os.path.join('./result', file), output)
-            # cv2.waitKey(0)
-            # break
+        # cv2.imwrite(os.path.join('./result', file), output)
+        cv2.imshow('output', output)
+        cv2.waitKey(0)
+        break
