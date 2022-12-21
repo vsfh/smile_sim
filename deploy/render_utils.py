@@ -20,9 +20,9 @@ def draw_edge(upper, lower, renderer, dist, mask, R, T, mid, x1,x2):
     lower = meshes_to_tensor(lower)
 
     teeth_batch = join_meshes_as_batch([upper, lower.offset_verts(dist[1][0])])
-    print('init', time.time()-start_time)
+    # print('init', time.time()-start_time)
     deepmap, depth = renderer(meshes_world=teeth_batch, R=R, T=T)
-    print('render', time.time()-start_time)
+    # print('render', time.time()-start_time)
 
     deepmap = deepmap.detach().numpy()
 
@@ -83,7 +83,7 @@ def meshes_to_tensor(meshes, device='cpu'):
         v = torch.tensor(np.asarray(m.vertices), dtype=torch.float32, device=device)
         verts.append(v)
 
-        f = torch.tensor(np.asarray(m.faces), dtype=torch.long, device=device)
+        f = torch.tensor(np.asarray(m.triangles), dtype=torch.long, device=device)
         faces.append(f)
     mesh_tensor = Meshes(
         verts=verts,
@@ -176,7 +176,7 @@ def render_init():
         perspective_correct=True,
         cull_backfaces=True
     )
-    cameras = PerspectiveCameras(device='cpu', focal_length=14)
+    cameras = PerspectiveCameras(device='cpu', focal_length=12)
     renderer = MeshRenderer(
         rasterizer=MeshRasterizer(
             cameras=cameras,
@@ -197,7 +197,7 @@ class EdgeShader(nn.Module):
         bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
         zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
         teeth = torch.argmin(zbuf_with_bg, dim=0)
-        print('shader', time.time()-start_time)
+        # print('shader', time.time()-start_time)
 
         return teeth, 1
 
@@ -205,7 +205,7 @@ class renderer:
     def __init__(self) -> None:
         self.model = render_init()
         standard_path = os.path.join(os.path.dirname(__file__), 'standard')
-        print(standard_path)
+        # print(standard_path)
         upper, lower, mid = load_up_low(standard_path, show=False)
         self.upper = upper
         self.lower = lower

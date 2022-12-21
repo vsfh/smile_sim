@@ -4,9 +4,9 @@ import torch
 
 camera_dict= {
     'z_init':400,
-    'z_init_width':33,
-    'z_change':7/90,
-    'y_init_11_low':144,
+    'z_init_width':32.785,
+    'z_change':6.8689/90,
+    'y_init_11_low':145,
     'y_change':4,
     'y_init_31_up':137
 }
@@ -33,7 +33,7 @@ def mask_length(mask):
     upper_mask[upper_mask==bg] = 0
     return upper_mask, lower_mask
 
-def parameter_pred(edgeu, edged, mask, tid):
+def parameter_pred(edgeu, edged, mask, tid, mid):
 
     threshold = [3, None, None]
 
@@ -58,8 +58,6 @@ def parameter_pred(edgeu, edged, mask, tid):
     
     _mask_height = max(down_mask[up_mask>0]-up_mask[up_mask>0])
     _mask_width = _mask_right_x - _mask_left_x
-    
-    print(_mask_height,  _mask_width/_mask_height)
     
     if _mask_height<20 or _mask_width/_mask_height>7:
         print('narrow')
@@ -114,7 +112,8 @@ def parameter_pred(edgeu, edged, mask, tid):
 
     camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-1)/camera_dict['z_change']
     camera_y = (np.mean(pos_tooth_down[pos_tooth_down>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
-    camera_x = ((left_edge+right_edge)/2-127)/camera_dict['y_change']
+    camera_x = (mid-127)/camera_dict['y_change']
+    print(camera_x)
 
     # distance of mask to the top of upper edge and the upper edge to the down edge
     edgeu_up, edgeu_down = mask_length(edgeu)
@@ -157,7 +156,7 @@ def _edge_pred(parameter, mask):
     zero_ = 0
     dist_up = torch.tensor([zero_,zero_,zero_]).type(torch.float32).unsqueeze(0)
     dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0)
-    angle = torch.tensor([zero_-1.396,zero_,angle_z]).type(torch.float32).unsqueeze(0)
+    angle = torch.tensor([zero_-1.35,zero_,angle_z]).type(torch.float32).unsqueeze(0)
     movement = torch.tensor([-camera_x, -camera_y, camera_z]).type(torch.float32).unsqueeze(0)
 
     pred_edge = render.para_edge(mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], x1=x1,x2=x2)
@@ -176,7 +175,6 @@ def narrow_edge(pred_edge, ori_width):
     _mask_left_x = np.min(pos_left_mask)
     _mask_right_x = np.max(pos_right_mask)
     ratio = (ori_width-_mask_right_x+_mask_left_x)/ori_width
-    print(ratio, _mask_right_x-_mask_left_x, ori_width)
     
     if ratio>0.2:
         return 1
