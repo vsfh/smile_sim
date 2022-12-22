@@ -59,9 +59,9 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
     _mask_height = max(down_mask[up_mask>0]-up_mask[up_mask>0])
     _mask_width = _mask_right_x - _mask_left_x
     
-    if _mask_height<20 or _mask_width/_mask_height>7:
-        print('narrow')
-        return None
+    # if _mask_height<20 or _mask_width/_mask_height>7:
+    #     print('narrow')
+    #     return None
 
     # ori region to cut unnecessary rendere teeth 
     edgeu_left, edgeu_right = mask_width(edgeu)
@@ -163,6 +163,7 @@ def _edge_pred(parameter, mask):
     pred_edge = cv2.dilate(pred_edge, np.ones((3,3))) 
 
     if narrow_edge(pred_edge/255, x2-x1):
+        print('narrow')
         return None
     return pred_edge
 
