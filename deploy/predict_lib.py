@@ -47,11 +47,12 @@ def _face_mid(image, show=False):
     pipeline.show = show
     pred_coro = pipeline.predict_image_async(image)
     res = asyncio.run(pred_coro)
-    v1 = res['ly']['V1']
-    v2 = res['ly']['V2']
+    # v1 = res['ly']['Ls']
+    # v2 = res['ly']['Li']
     
-    target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
-    target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
+    # target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
+    # target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
+    target_x = res['ly']['Ls'][0]
     return target_x
     
 def _seg_mouth(image, triton_client):
@@ -218,6 +219,8 @@ def smile_sim_predict(
     aligned_mouth = aligned_mouth.astype(np.uint8)
     
     template[y: y + 256, x: x + 256] = aligned_mouth
+    mid_x = _face_mid(template, True)
+    
     image = cv2.resize(template, (width, height))
     return template
 
@@ -227,8 +230,9 @@ if __name__=="__main__":
     for file in os.listdir(path):
         # if not os.path.isfile(os.path.join('./result', file)):
         print(file)
+        file = 'BC01000739458.png'
         img_path = os.path.join(path,file)
-        img_path = '/mnt/share/shenfeihong/tmp/image (3).png'
+        # img_path = '/mnt/share/shenfeihong/tmp/image (8).png'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         # _, rot_image = cv2.imencode('.jpg',image)
