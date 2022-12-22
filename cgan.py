@@ -195,10 +195,10 @@ class TeethGenerator(nn.Module):
             input_img=False
     ):
         if input_img:
-            styles = [self.img_proj(real_image.mean(1)).view(-1,14,256)]
+            styles = [self.img_proj(real_image.mean(1)).mean(-1)]
 
-        # if not input_is_latent:
-        #     styles = [self.style(s) for s in styles]
+        if not input_is_latent:
+            styles = [self.style(s) for s in styles]
 
         if noise is None:
             if randomize_noise:

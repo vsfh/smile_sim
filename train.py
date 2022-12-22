@@ -445,7 +445,7 @@ if __name__ == "__main__":
         synchronize()
 
     args.latent = 256
-    args.n_mlp = 8
+    args.n_mlp = 2
     args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20'
     args.start_iter = 0
 
@@ -490,12 +490,12 @@ if __name__ == "__main__":
         except ValueError:
             pass
 
-        generator.load_state_dict(ckpt["g"])
+        generator.load_state_dict(ckpt["g"], strict=False)
         discriminator.load_state_dict(ckpt["d"])
-        g_ema.load_state_dict(ckpt["g_ema"])
+        g_ema.load_state_dict(ckpt["g_ema"], strict=False)
 
-        g_optim.load_state_dict(ckpt["g_optim"])
-        d_optim.load_state_dict(ckpt["d_optim"])
+        # g_optim.load_state_dict(ckpt["g_optim"])
+        # d_optim.load_state_dict(ckpt["d_optim"])
 
     if args.distributed:
         generator = nn.parallel.DistributedDataParallel(
