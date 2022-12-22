@@ -669,9 +669,9 @@ def get_tid(teeth_model, img):
  
 camera_dict= {
     'z_init':400,
-    'z_init_width':33,
-    'z_change':7/90,
-    'y_init_11_low':144,
+    'z_init_width':32.785,
+    'z_change':6.8689/90,
+    'y_init_11_low':145,
     'y_change':4,
     'y_init_31_up':137
 }
@@ -707,7 +707,6 @@ def narrow_edge(pred_edge, ori_width):
     _mask_left_x = np.min(pos_left_mask)
     _mask_right_x = np.max(pos_right_mask)
     ratio = (ori_width-_mask_right_x+_mask_left_x)/ori_width
-    print(ratio, _mask_right_x-_mask_left_x, ori_width)
     
     if ratio>0.2:
         return 1
@@ -739,8 +738,6 @@ def parameter_pred(mouth, edgeu, edged, mask, model):
     
     _mask_height = max(down_mask[up_mask>0]-up_mask[up_mask>0])
     _mask_width = _mask_right_x - _mask_left_x
-    
-    print(_mask_height,  _mask_width/_mask_height)
     
     if _mask_height<20 or _mask_width/_mask_height>7:
         print('narrow')
@@ -778,19 +775,23 @@ def parameter_pred(mouth, edgeu, edged, mask, model):
         return None
     tooth = np.zeros_like(tid)
     tooth[tid==11]=1
+    tooth_21 = np.zeros_like(tid)
+    tooth_21[tid==21]=1
     if np.sum(tooth)<10:
         print('w/o 11')
-        tooth = np.zeros_like(tid)
-        tooth[tid==21]=1
-        if np.sum(tooth) < 10:
+        if np.sum(tooth_21) < 10:
             print('w/o 21')
             return None
 
     tooth_left, tooth_right = mask_width(tooth)
+    tooth_21_left, tooth_21_right = mask_width(tooth)
+    
     _, tooth_down = mask_length(tooth)
     
     pos_tooth_left = tooth_left[tooth_left>0]
     pos_tooth_right = tooth_right[tooth_right>0]
+    pos_tooth_21_left = tooth_21_left[tooth_21_left>0]
+    pos_tooth_21_right = tooth_21_right[tooth_21_right>0]
     pos_tooth_down = tooth_down[tooth_down>0]
     
     width_11 = np.mean(pos_tooth_right[int(len(pos_tooth_right)/3):int(len(pos_tooth_right)/3*2)])\
@@ -799,7 +800,18 @@ def parameter_pred(mouth, edgeu, edged, mask, model):
 
     camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-1)/camera_dict['z_change']
     camera_y = (np.mean(pos_tooth_down[pos_tooth_down>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
-    camera_x = ((left_edge+right_edge)/2-127)/camera_dict['y_change']
+    
+    mid_tooth = 0
+    edge_mid = left_edge+right_edge
+    if np.sum(tooth)>10 and np.sum(tooth_21)<10:
+        mid_tooth = np.mean(pos_tooth_right[int(len(pos_tooth_right)/3):int(len(pos_tooth_right)/3*2)])
+    elif np.sum(tooth)>10 and np.sum(tooth_21)>10:
+        mid_tooth = (np.mean(pos_tooth_right[int(len(pos_tooth_right)/3):int(len(pos_tooth_right)/3*2)])+\
+            np.mean(pos_tooth_21_left[int(len(pos_tooth_21_left)/3):int(len(pos_tooth_21_left)/3*2)]))/2
+    elif np.sum(tooth)<10 and np.sum(tooth_21)>10:
+        mid_tooth = np.mean(pos_tooth_21_left[int(len(pos_tooth_21_left)/3):int(len(pos_tooth_21_left)/3*2)])
+        
+    camera_x = (edge_mid/2-127)/camera_dict['y_change']
 
     # distance of mask to the top of upper edge and the upper edge to the down edge
     edgeu_up, edgeu_down = mask_length(edgeu)
