@@ -70,7 +70,7 @@ def test_single_full():
     tid_model = get_yolo('/mnt/share/shenfeihong/weight/pretrain')
     sample_dir = '/home/meta/sfh/data/smile/40photo'
     sample_dir = '/home/disk/data/smile_sim/tianshi/face'
-    save_path = './2022.12.13/test/tianshi'
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.9'
     # save_path = './2022.12.13/edge/test/'
     
 
@@ -160,13 +160,13 @@ def test_single_full():
         pred_edge[:,:int(x1)]=0
         pred_edge[:,int(x2):]=0
         
-        cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge.astype(np.uint8)*255)
-        cv2.imwrite(f"{save_path}/pred_edge/p_{img_name}.png", pred_edge)  
+        # cv2.imwrite(f"{save_path}/edge/e_{img_name}.png", edge.astype(np.uint8)*255)
+        # cv2.imwrite(f"{save_path}/pred_edge/p_{img_name}.png", pred_edge)  
         
         pred_edge = torch.from_numpy((pred_edge/255).astype(np.float32)[None][None]).cuda()
         for i in range(100):
-            # sample_z = (torch.randn((1,256))).cuda()   
-            sample_z = torch.load(f'./2022.12.13/edge/test/pth/51.pth').cuda()
+            sample_z = (torch.randn((1,256))).cuda()   
+            # sample_z = torch.load(f'./2022.12.13/edge/test/pth/51.pth').cuda()
             
             # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{i}.pth')               
             sample, _ = model([sample_z], real_image=mouth_tensor, mask=cir_mask, edge=pred_edge)
@@ -174,8 +174,8 @@ def test_single_full():
             
             sample = sample[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
-            cv2.imwrite(f"{save_path}/all/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
-            break
+            cv2.imwrite(f"{save_path}/all/{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
+            # break
         # break
 
 

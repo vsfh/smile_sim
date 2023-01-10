@@ -137,7 +137,8 @@ class TeethGenerator(nn.Module):
 
             self.convs.append(
                 StyledConv(
-                    in_channel * 2,
+                    # in_channel * 2,
+                    in_channel,
                     out_channel,
                     3,
                     style_dim,
@@ -156,7 +157,7 @@ class TeethGenerator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        self.img_proj = nn.Linear(256,14)
+        self.img_proj = nn.Linear(256,2)
 
     def make_noise(self):
         device = self.input.input.device
@@ -194,9 +195,6 @@ class TeethGenerator(nn.Module):
             randomize_noise=True,
             input_img=False
     ):
-        if input_img:
-            styles = [self.img_proj(real_image.mean(1)).mean(-1)]
-
         if not input_is_latent:
             styles = [self.style(s) for s in styles]
 
@@ -219,7 +217,6 @@ class TeethGenerator(nn.Module):
             styles = style_t
 
         if len(styles) < 2:
-            # print('a')
             inject_index = self.n_latent
 
             if styles[0].ndim < 3:
@@ -229,7 +226,6 @@ class TeethGenerator(nn.Module):
                 latent = styles[0]
 
         else:
-
             if inject_index is None:
                 inject_index = random.randint(1, self.n_latent - 1)
 
@@ -238,8 +234,8 @@ class TeethGenerator(nn.Module):
 
             latent = torch.cat([latent, latent2], 1)
 
-
-        geometry_features = self.geometry_encoder(real_image * mask)
+        encoder_input = torch.rand_like(real_image)*(1-mask)*0.9+real_image*0.1
+        geometry_features = self.geometry_encoder(encoder_input)
 
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
@@ -248,10 +244,9 @@ class TeethGenerator(nn.Module):
         for conv1, conv2, noise1, noise2, to_rgb in zip(
                 self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
+            # out = torch.cat([out, geometry_features[-(i // 2 + 1)]], dim=1)
 
-            out = torch.cat([out, geometry_features[-(i // 2 + 1)]], dim=1)
-
-            # out = out + geometry_features[-(i//2 + 1)]
+            out = out + geometry_features[-(i//2 + 1)]
             out = conv1(out, latent[:, i], noise=noise1)
             out = conv2(out, latent[:, i + 1], noise=noise2)
 
@@ -336,7 +331,7 @@ if __name__ == '__main__':
     sample = torch.randn(4,14, 256)
     image = torch.randn(4,3,256,256)
     mask = torch.randn(4,1,256,256)
-    img, _ = model(image, image, mask, input_img=True)
+    img, _ = model(image, input_img=True)
     print(img.shape)
     
 

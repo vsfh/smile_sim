@@ -1,6 +1,6 @@
-from cgan import TeethGenerator
-# from edge_gan import TeethGenerator
-from encoders.psp_encoders import GradualStyleEncoder
+# from cgan import TeethGenerator
+from edge_gan import TeethGenerator
+# from encoders.psp_encoders import GradualStyleEncoder
 import torch
 import torch.nn as nn
 
@@ -79,7 +79,7 @@ def convert_to_onnx():
     model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
     # model.psp_encoder.load_state_dict(ckpt_encoder_)
     input_name = ['input_image','mask','edge','big_mask']
-    input_name = ['input_image','mask','big_mask']
+    # input_name = ['input_image','mask','big_mask']
     
     output_name = ['align_img']
     torch.onnx.export(model, (input1, input2, input3), output_path, export_params=True, input_names=input_name, output_names=output_name,
