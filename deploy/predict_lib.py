@@ -146,7 +146,8 @@ def smile_sim_predict(
     mouth_objs = objs[2]
     x1, y1, x2, y2 = mouth_objs
     if x1==x2 and y1==y2:
-        raise Exception("error image!")
+        print('wrong image')
+        return image, roundn
     
     
 
@@ -167,7 +168,8 @@ def smile_sim_predict(
     mouth = template[y: y + 256, x: x + 256]
     
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
-        return cv2.resize(template, (width, height))
+        print('wrong image wo face')
+        return cv2.resize(template, (width, height)), roundn
 
     # step 2. edgenet seg mouth
     seg_result = _seg_mouth(mouth, triton_client)
@@ -178,7 +180,8 @@ def smile_sim_predict(
     teeth_mask = (seg_result[..., 0] > 0.6).astype(np.float32)
     
     if(np.sum(teeth_mask)<10):
-        return cv2.resize(template, (width, height))
+        print('wrong image wo mouth')
+        return cv2.resize(template, (width, height)), roundn
     
     try:
         tid = _seg_tid(mouth, server_url)
@@ -219,10 +222,10 @@ def smile_sim_predict(
     aligned_mouth = aligned_mouth.astype(np.uint8)
     
     template[y: y + 256, x: x + 256] = aligned_mouth
-    mid_x = _face_mid(template, True)
+    # mid_x = _face_mid(template, True)
     
     image = cv2.resize(template, (width, height))
-    return template
+    return template, roundn
 
 if __name__=="__main__":
     import os
@@ -230,7 +233,7 @@ if __name__=="__main__":
     for file in os.listdir(path):
         # if not os.path.isfile(os.path.join('./result', file)):
         print(file)
-        file = 'BC01000739458.png'
+        # file = 'BC01000739458.png'
         img_path = os.path.join(path,file)
         # img_path = '/mnt/share/shenfeihong/tmp/image (8).png'
         image = cv2.imread(img_path)
@@ -240,10 +243,10 @@ if __name__=="__main__":
         
         with open(img_path, 'rb') as f:
             rot_image = f.read()
-        output = smile_sim_predict(rot_image, rgb_image, server_url)
+        output, roundn = smile_sim_predict(rot_image, rgb_image, server_url)
         output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
         
         # cv2.imwrite(os.path.join('./result', file), output)
         cv2.imshow('output', output)
         cv2.waitKey(0)
-        break
+        # break

@@ -43,7 +43,20 @@ def noise():
             normalize=True,
             range=(0, 1),
         )
-        
+
+def _face_mid(image, show=False):
+    from deploy.face_mid import pipeline
+    import asyncio
+    pipeline.show = show
+    pred_coro = pipeline.predict_image_async(image)
+    res = asyncio.run(pred_coro)
+    v1 = res['ly']['V1']
+    v2 = res['ly']['V2']
+    
+    target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
+    target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
+    return target_x
+
 # torch.manual_seed(666)
 # torch.cuda.manual_seed(666)
 from render import *
@@ -51,14 +64,14 @@ def test_single_full():
     from edge_gan import TeethGenerator
     
     renderer = render_init()
-    file_path = '/home/disk/data/tooth_arrangement/1_1000/C01001588529'
+    file_path = './deploy/standard'
     upper, lower, mid = load_up_low(file_path, 5, show=False)
     # c_upper, c_lower, mid = load_up_low(file_path, 3, show=False)
     
     zero_ = 0
     
     model = TeethGenerator(256, 256, 8).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/tmp/040000.pt', map_location=lambda storage, loc: storage)
+    ckpt_down = torch.load('/mnt/share/shenfeihong/tmp/edge/070000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     
     # trans = cls(n_channels=3).cuda()
@@ -73,11 +86,13 @@ def test_single_full():
     save_path = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.9'
     # save_path = './2022.12.13/edge/test/'
     
+    # sample_dir = '/home/disk/data/smile_sim/tianshi/face'
+    # save_path = './2022.12.13/test/tianshi'
 
     # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
     for file in os.listdir(sample_dir):
         img_path = os.path.join(sample_dir,file)
-        # img_path = '/home/meta/sfh/data/smile/40photo/C01008078227.jpg'
+        img_path = '/home/meta/sfh/data/smile/40photo/BC01000286950.jpg'
         # img_path = '/home/disk/data/smile_sim/tianshi/face/577912.jpg'
         
         print(file)
@@ -103,6 +118,7 @@ def test_single_full():
         x, y = int(x1 * 128 / half), int(y1 * 128 / half) + 2
 
         image = cv2.resize(image, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
+        # mid_x = _face_mid(image)
         mouth = image[y: y + 256, x: x + 256]
         result = seg.predict(mouth)
 
@@ -136,8 +152,10 @@ def test_single_full():
           
 
         parameter = parameter_pred(mouth,up_edge,down_edge,teeth_mask,tid_model)
+        print(parameter)
         if not parameter:
-            continue
+            print('wo para')
+            break
         dist_lower = parameter['dist']
         angle_z = parameter['anglez']
         camera_x = parameter['camerax']
@@ -146,6 +164,7 @@ def test_single_full():
         x1 = parameter['x1']
         x2 = parameter['x2']
         
+        # camera_x = (mid_x-x-127)/2
         
         dist_up = torch.tensor([zero_,zero_,zero_]).type(torch.float32).unsqueeze(0).cuda()
         dist_down = torch.tensor([zero_,zero_,dist_lower]).type(torch.float32).unsqueeze(0).cuda()
@@ -154,8 +173,9 @@ def test_single_full():
 
         pred_edge = render(renderer=renderer, upper=upper, lower=lower, mask=mask, angle=angle, movement=movement, dist=[dist_up, dist_down], mid=mid)
 
-        if narrow_edge(pred_edge/255, x2-x1):
-            continue
+        # if narrow_edge(pred_edge/255, x2-x1):
+        #     print('narrow')
+        #     break
         
         pred_edge[:,:int(x1)]=0
         pred_edge[:,int(x2):]=0
@@ -182,13 +202,6 @@ def test_single_full():
 
         
 
-        # utils.save_image(
-        #     sample,
-        #     f"{save_path}/{img_name}.png",
-        #     nrow=2,
-        #     normalize=True,
-        #     range=(-1, 1),
-        # )
     
 if __name__ == "__main__":
     test_single_full()

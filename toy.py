@@ -46,8 +46,8 @@ def noise():
 # torch.cuda.manual_seed(666)
 def test_single_full():
     from cgan import TeethGenerator
-    model = TeethGenerator(256, 256, 1).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/080000.pt', map_location=lambda storage, loc: storage)
+    model = TeethGenerator(256, 256, 8).cuda()
+    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/165000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
@@ -86,37 +86,56 @@ def test_single_full():
             result = seg.predict(mouth)
 
             mask = (result[..., 0] > 0.6).astype(np.float32)
+            # cv2.imwrite(f"{save_path}/mask.png", mask.astype(np.uint8)*255)
             big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
-            mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
-            # mask[:40,:]=1
-            cv2.imwrite(f"{save_path}/mask.png", mask.astype(np.uint8)*255)
-            
-            mask = torch.from_numpy(mask.astype(np.float32)[None][None]).cuda()
+            # mask = cv2.dilate(mask, kernel=np.ones((23, 23)))-big_mask
+            mask = torch.from_numpy(big_mask.astype(np.float32)[None][None]).cuda()
             mouth_tensor = mouth/255*2-1
             mouth_tensor = torch.from_numpy(mouth_tensor.transpose(2,0,1).astype(np.float32)[None]).cuda()
 
-            sample, _ = model([sample_z], real_image=mouth_tensor, mask=mask, input_img=True)
+            sample, _ = model(sample_z, real_image=mouth_tensor, mask=1-mask, input_img=True)
             sample = sample[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
             # sample = big_mask[...,None]*sample+(1-big_mask[...,None])*mouth
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
             img_name = img_path.split('/')[-1].split('.')[0]
             
-            cv2.imwrite(f"{save_path}/single/{img_name}.png",cv2.cvtColor(sample, cv2.COLOR_RGB2BGR).astype(np.uint8))
+            cv2.imwrite(f"{save_path}/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
             # torch.save(sample_z.detach().cpu(),f'{save_path}/pth/{i}.pth')
             # break
         
             # cv2.imwrite(f"{save_path}/{img_name}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
         break
         
+def test_single():
+    from cgan import TeethGenerator
+    model = TeethGenerator(256, 256, 8).cuda()
+    ckpt_down = torch.load('./2022.12.13/wo_edge/040000.pt', map_location=lambda storage, loc: storage)
+    model.load_state_dict(ckpt_down["g_ema"])
+    yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
+    seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
+    sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/test'
 
-        # utils.save_image(
-        #     sample,
-        #     f"{save_path}/{img_name}.png",
-        #     nrow=2,
-        #     normalize=True,
-        #     range=(-1, 1),
-        # )
+
+    img_path = '/home/disk/data/smile_sim/smile_ffhq_2000+_seg/00086/mouth.jpg'
+    image = cv2.imread(img_path)
+    mouth = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+
+    result = seg.predict(mouth)
+
+    mask = (result[..., 0] > 0.6).astype(np.float32)
+    # big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
+    mask = torch.from_numpy(mask.astype(np.float32)[None][None]).cuda()
+    mouth_tensor = mouth/255*2-1
+    mouth_tensor = torch.from_numpy(mouth_tensor.transpose(2,0,1).astype(np.float32)[None]).cuda()
+
+    sample, _ = model(1, real_image=mouth_tensor, mask=1-mask, input_img=True)
+    sample = sample[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
+
+    img_name = img_path.split('/')[-1].split('.')[0]
     
+    cv2.imwrite(f"{save_path}/1.png",cv2.cvtColor(sample, cv2.COLOR_RGB2BGR).astype(np.uint8))
+
 if __name__ == "__main__":
     test_single_full()
     a = 1
