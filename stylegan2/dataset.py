@@ -446,10 +446,13 @@ class fuck(Dataset):
    
 
         self.path = '/mnt/share/shenfeihong/data/smile_/mouth_seg/'
-        self.all_files =  glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
-                                glob.glob('/mnt/share/shenfeihong/data/smile_/2022-11-30-cvat/face_seg_22_11_25/*/mouth.png')+\
-                                    glob.glob('/mnt/share/shenfeihong/data/smile_/smile_ffhq_2000+_seg/*/mouth.jpg')
-
+        self.all_files =  \
+                                glob.glob('/data/shenfeihong/tianshi_1.4_seg/*/mouth.png')+\
+                                glob.glob('/data/shenfeihong/tianshi_seg/*/mouth.png')   
+                                # glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
+                                        
+                                    # glob.glob('/data/shenfeihong/ffhq_seg/*/mouth.jpg')
+        self.align_teeth = glob.glob('/data/shenfeihong/new_face/*')
         self.transform = transforms.Compose(
                             [
                                 transforms.Resize([256,256]),
@@ -470,7 +473,7 @@ class fuck(Dataset):
             ske_file = frame_file.replace(f_name,'MouthMask.png')
         else:
             ske_file = frame_file.replace(f_name,'mask.png')
-        inner = np.random.randint(5)
+        inner = 3
         
         frame = Image.open(frame_file)
         mask = Image.open(ske_file)
@@ -490,25 +493,32 @@ class fuck(Dataset):
         big_mask = mask.astype(np.float32)[None]
         
         ##edge
-        fdir = frame_file.split('/')[-3]
-        if fdir[-1]=='g':
-            edge = Image.open(frame_file.replace(f_name,'TeethEdge.png'))
-        else:
-            edge = Image.open(frame_file.replace(f_name,'edge.png'))
+        # fdir = frame_file.split('/')[-3]
+        # if fdir[-1]=='g':
+        #     edge = Image.open(frame_file.replace(f_name,'TeethEdge.png'))
+        # else:
+        edge = Image.open(frame_file.replace(f_name,'edge.png'))
 
         edge = np.array(edge)/255
         if len(edge.shape) == 3:
             edge = edge[...,0]
 
         edge = edge.astype(np.float32)[None]
+        
+        cond_mask = np.copy(cir_mask)
+        cond_mask[:,:40,:]=1
                 
         img = self.transform(frame)*2-1
         if np.random.randint(2)>0:
             img = flip(img,2)
             cir_mask = cir_mask[:,:,::-1].copy()
+            cond_mask = cond_mask[:,:,::-1].copy()
+            
             big_mask = big_mask[:,:,::-1].copy()
             edge = edge[:,:,::-1].copy()
-        return {'images': img, 'mask':cir_mask, 'big_mask':big_mask, 'edge':edge}
+        return {'images': img, 'mask':cir_mask, 'big_mask':big_mask, 'edge':edge, 'cond_mask':cond_mask}
+        # return {'images': img, 'mask':cir_mask, 'big_mask':big_mask, 'cond_mask':cond_mask}
+        
 
 def mask_proc(mask, dilate=True):
         mask = np.array(mask)/255

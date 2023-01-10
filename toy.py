@@ -52,13 +52,15 @@ def test_single_full():
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
+    sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
+    
     save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/test'
     for i in range(100):
         sample_z = torch.randn((1,256)).cuda()
         # sample_z = torch.load(f'{save_path}/pth/95.pth').cuda()
         for file in os.listdir(sample_dir):
             img_path = os.path.join(sample_dir,file)
-            # img_path = '/mnt/share/shenfeihong/tmp/test/40photo/BC01000237226.jpg'
+            # img_path = './577535.jpg'
             image = cv2.imread(img_path)
             image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             height, width = image.shape[:2]

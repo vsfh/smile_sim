@@ -463,7 +463,7 @@ if __name__ == "__main__":
 
     args.latent = 256
     args.n_mlp = 8
-    args.weight_dir = './2022.12.13/edge'
+    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.9'
     args.start_iter = 0
     args.project = True
 
