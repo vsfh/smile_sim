@@ -252,18 +252,15 @@ def smile_sim_predict(
     return image, roundn
 
 if __name__=="__main__":
+    
     import os
     path = '/home/disk/data/smile_sim/tianshi/face'
-    # path = '/home/disk/data/smile_sim/tianshi/face'
     for file in os.listdir(path):
-        # if not os.path.isfile(os.path.join('./result', file)):
         print(file)
         img_path = os.path.join(path,file)
         img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
-        # img_path = '/home/meta/下载/3/image (4).png'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        # _, rot_image = cv2.imencode('.jpg',image)
         server_url = '0.0.0.0:8001'
         
         with open(img_path, 'rb') as f:
