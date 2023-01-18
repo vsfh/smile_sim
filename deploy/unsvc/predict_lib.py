@@ -43,18 +43,23 @@ def _find_objs(image, triton_client):
 
 def _face_mid(image, show=False):
     from face_mid import pipeline
-    import asyncio
+
     pipeline.show = show
-    pred_coro = pipeline.predict_image_async(image)
-    res = asyncio.run(pred_coro)
-    # v1 = res['ly']['Ls']
-    # v2 = res['ly']['Li']
+    res = pipeline.predict_image(image)
+    
+    # target_x = res['ly']['Ls'][0]
+
+    # v1 = res['ly']['Sn']
+    # v2 = res['ly']['V2']
+    
+    if res['ly']['V1'][1]<0:
+        return 0
     
     # target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
     # target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
-    target_x = res['ly']['Ls'][0]
+    target_x = res['ly']['Sn'][0]
     return target_x
-    
+
 def _seg_mouth(image, triton_client):
     seg_input_shape = (256, 256)
     resized_image, _ = utils.resize_and_pad(image, seg_input_shape)
@@ -82,19 +87,16 @@ def face_rot(image, triton_client, height, width):
                             with_deg=True,
                             mode='xywh',
                             )
-
-    # if len(res)<8:
-    #     raise Exception("error image rot")
-    # elif len(res[7])<1:
-    #     raise Exception("error image rot")
-    # elif len(res[7][0])<5:
-    #     raise Exception("error image rot")
     if len(res)<8:
+        print('error image res')
         return 0
     elif len(res[7])<1:
+        print('error image res')
         return 0
     elif len(res[7][0])<5:
+        print('error image res')
         return 0
+
     angle = res[7][0][4]
     roundn = 0
     angle = angle -90
@@ -140,16 +142,17 @@ def smile_sim_predict(
     image = np.rot90(image, -roundn)
     height, width = image.shape[:2]
 
+    error_mes = None
     # step 1. find mouth obj
     objs = _find_objs(image, triton_client)
 
     mouth_objs = objs[2]
     x1, y1, x2, y2 = mouth_objs
     if x1==x2 and y1==y2:
-        print('wrong image')
+        error_mes = 'not smile image'
+        cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
+            0.7,(255,255,255), 1, cv2.LINE_AA)
         return image, roundn
-    
-    
 
     w, h = (x2 - x1), (y2 - y1)
     
@@ -163,13 +166,21 @@ def smile_sim_predict(
     x, y = int(x1 * 128 / half), int(y1 * 128 / half) + 2
 
     template = cv2.resize(image, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
-    
     mid_x = _face_mid(template, False)
+    if mid_x==0:
+        error_mes = 'too close'
+        image = cv2.resize(template, (width, height))
+        cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
+            0.7,(255,255,255), 1, cv2.LINE_AA)
+        return image, roundn
     mouth = template[y: y + 256, x: x + 256]
     
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
-        print('wrong image wo face')
-        return cv2.resize(template, (width, height)), roundn
+        error_mes = 'small image'
+        image = cv2.resize(template, (width, height))
+        cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
+            0.7,(255,255,255), 1, cv2.LINE_AA)
+        return image, roundn
 
     # step 2. edgenet seg mouth
     seg_result = _seg_mouth(mouth, triton_client)
@@ -180,15 +191,18 @@ def smile_sim_predict(
     teeth_mask = (seg_result[..., 0] > 0.6).astype(np.float32)
     
     if(np.sum(teeth_mask)<10):
-        print('wrong image wo mouth')
-        return cv2.resize(template, (width, height)), roundn
+        error_mes = 'no teeth show'
+        image = cv2.resize(template, (width, height))
+        cv2.putText(image, error_mes, (int(width/2), int(height/2)), cv2.FONT_HERSHEY_SIMPLEX, 
+            0.7,(255,255,255), 1, cv2.LINE_AA)
+        return image, roundn
     
     try:
         tid = _seg_tid(mouth, server_url)
-        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid,mid_x-x)
+        print('mouth_pos:',x,y)
+        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid, mid_x-x)
     except:
         parameter = None
-       
     big_mask = cv2.dilate(teeth_mask, kernel=np.ones((3, 3)))
     cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((23, 23)))-big_mask
     cir_mask = cir_mask[...,None]
@@ -202,18 +216,25 @@ def smile_sim_predict(
     # cv2.imshow('fg', a.astype(np.uint8))
     # cv2.imshow('edge', edge.astype(np.uint8)*255)
     # cv2.waitKey(0) 
-    if not parameter:
+    if parameter is None:
+        error_mes = 'teeth blur'
         # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
         input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
         network_name = 'new_smile_wo_edge_gan'
     else:
-        edge = _edge_pred(parameter, teeth_mask)
+        try:
+            edge = _edge_pred(parameter, teeth_mask)
+        except:
+            edge = None
+
         if edge is not None:
+            
             edge = edge[...,None]/255
             input_dict = {'input_image':input_image,'mask':cir_mask,'edge':edge,'big_mask':big_mask}
             network_name = 'smile_sim_lip_preserve-up_net'
         else:
             # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
+            error_mes = 'render fail'
             input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
             network_name = 'new_smile_wo_edge_gan'
             
@@ -222,20 +243,24 @@ def smile_sim_predict(
     aligned_mouth = aligned_mouth.astype(np.uint8)
     
     template[y: y + 256, x: x + 256] = aligned_mouth
-    # mid_x = _face_mid(template, True)
+    mid_x = _face_mid(template, True)
     
     image = cv2.resize(template, (width, height))
-    return template, roundn
+    if not error_mes is None:
+        cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
+            0.7,(255,255,255), 1, cv2.LINE_AA)
+    return image, roundn
 
 if __name__=="__main__":
     import os
-    path = '/home/meta/sfh/data/smile/40photo'
+    path = '/home/disk/data/smile_sim/tianshi/face'
+    # path = '/home/disk/data/smile_sim/tianshi/face'
     for file in os.listdir(path):
         # if not os.path.isfile(os.path.join('./result', file)):
         print(file)
-        # file = 'BC01000739458.png'
         img_path = os.path.join(path,file)
-        # img_path = '/mnt/share/shenfeihong/tmp/image (8).png'
+        img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
+        # img_path = '/home/meta/下载/3/image (4).png'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         # _, rot_image = cv2.imencode('.jpg',image)
@@ -243,10 +268,11 @@ if __name__=="__main__":
         
         with open(img_path, 'rb') as f:
             rot_image = f.read()
-        output, roundn = smile_sim_predict(rot_image, rgb_image, server_url)
+        output,_ = smile_sim_predict(rot_image, rgb_image, server_url)
         output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
         
-        # cv2.imwrite(os.path.join('./result', file), output)
-        cv2.imshow('output', output)
+        img_name = img_path.split('/')[-1]
+        # cv2.imwrite(os.path.join('/home/disk/data/smile_sim/cvat/new_face', img_name), output)
+        cv2.imshow('img', output)
         cv2.waitKey(0)
-        # break
+        break

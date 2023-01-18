@@ -20,9 +20,7 @@ def draw_edge(upper, lower, renderer, dist, mask, R, T, mid, x1,x2):
     lower = meshes_to_tensor(lower)
 
     teeth_batch = join_meshes_as_batch([upper, lower.offset_verts(dist[1][0])])
-    # print('init', time.time()-start_time)
     deepmap, depth = renderer(meshes_world=teeth_batch, R=R, T=T)
-    # print('render', time.time()-start_time)
 
     deepmap = deepmap.detach().numpy()
 
@@ -127,7 +125,7 @@ def load_single_teeth_mesh(data_file, id=0,half=True, sample=True, voxel_size=1.
     # print(np.asarray(mesh.triangles).shape)
     return mesh
       
-def load_up_low(teeth_folder_path, show=True):
+def load_up_low(teeth_folder_path, show=False):
     num_teeth = 5
     up_keys = list(range(11, 11 + num_teeth)) + list(range(21, 21 + num_teeth))
     down_keys = list(range(31, 31 + num_teeth)) + list(range(41, 41 + num_teeth))
@@ -156,8 +154,8 @@ def load_up_low(teeth_folder_path, show=True):
         elif tid in down_keys:
             down_mesh_list.append(mesh)
 
-    upper = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'), half=False)
-    lower = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'), half=False)
+    upper = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'up', 'gum.ply'), half=False, voxel_size=4)
+    lower = load_single_teeth_mesh(os.path.join(teeth_folder_path, 'down', 'gum.ply'), half=False, voxel_size=4)
     up_mesh_list.append(upper)
     down_mesh_list.append(lower)
     mesh_list = []
@@ -189,7 +187,6 @@ def render_init():
 
 class EdgeShader(nn.Module):
     def forward(self, fragments, meshes, **kwargs):
-        start_time = time.time()
         bg_value = 1e6
         zbuf = fragments.zbuf
         N, H, W, K = zbuf.shape
@@ -197,7 +194,6 @@ class EdgeShader(nn.Module):
         bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
         zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
         teeth = torch.argmin(zbuf_with_bg, dim=0)
-        # print('shader', time.time()-start_time)
 
         return teeth, 1
 
@@ -205,7 +201,6 @@ class renderer:
     def __init__(self) -> None:
         self.model = render_init()
         standard_path = os.path.join(os.path.dirname(__file__), 'standard')
-        # print(standard_path)
         upper, lower, mid = load_up_low(standard_path, show=False)
         self.upper = upper
         self.lower = lower
