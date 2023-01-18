@@ -30,8 +30,8 @@ class ProfilePipeline():
         if backend == 'native':
             self.model_root = 'weights/repository'
         elif backend == 'web':
-            # self.model_root = "zh-triton.zh-ml-backend.svc:8001"
             self.model_root = "0.0.0.0:8001"
+            # self.model_root = "zh-triton.zh-ml-backend.svc:8001"
             
 
         self.yolo_model = YoloModel(self.model_root, 'face-detector', (512, 512), backend=backend)
@@ -105,8 +105,9 @@ class FrontPipeline():
         if backend == 'native':
             self.model_root = 'weights/repository'
         elif backend == 'web':
+            self.model_root = '0.0.0.0:8001'
+            
             # self.model_root = "zh-triton.zh-ml-backend.svc:8001"
-            self.model_root = "0.0.0.0:8001"
 
         self.yolo_model = YoloModel(self.model_root, 'face-detector', (512, 512), backend=backend)
         self.face_kps_model = KeypointsModel(self.model_root, 'face-front_kps', (512, 512), resize_ratio=0.9,
@@ -146,12 +147,13 @@ class FrontPipeline():
         ly_dict['V1'] = np.array([x1, y1])
         ly_dict['V2'] = np.array([x2, y2])
 
-    async def predict_image_async(self, img):
+    def predict_image(self, img):
         height, width = img.shape[:2]
-        objs = await self.yolo_model.predict_async(
+        objs = self.yolo_model.predict(
             img,
             class_names=self.YOLO_CLASS_NAMES,
-            show=self.show
+            show=self.show,
+            class_agnostic=False,
         )
 
         if 'face' not in objs:
@@ -159,7 +161,7 @@ class FrontPipeline():
         else:
             face_bbox = loose_bbox(objs['face'][0]['xyxy'], (width, height), 0.15)
 
-        ly_kps = await  self.face_kps_model.predict_async(img, bbox=face_bbox, show=self.show)
+        ly_kps = self.face_kps_model.predict(img, bbox=face_bbox, show=self.show)
         ly_dict = {k: p for k, p in zip(self.FACE_KEYPOINT_NAMES, ly_kps)}
         self.correct_middle_line(ly_dict)
         ly_dict['Zero'] = (ly_dict['V2'] + ly_dict['V1']) / 2
@@ -323,42 +325,7 @@ class SmilePipeLine(FrontPipeline):
 
 
 backend = 'web'
-# profile_pipeline = ProfilePipeline(backend)
 pipeline = FrontPipeline(backend)
-# smile_pipeline = SmilePipeLine(backend)
-if __name__ == '__main__':
-    import os
-    from tqdm import tqdm
-    from PIL import Image
 
-    backend = 'web'
-    # pipeline = ProfilePipeline(backend)
-    pipeline = FrontPipeline(backend)
-    # pipeline = SmilePipeLine(backend)
-    pipeline.show = True
 
-    data_dir = r'/mnt/share/shenfeihong/tmp/test/40photo'
-
-    count = 0
-    for file in tqdm(os.listdir(data_dir)):
-        if file.endswith('json'):
-            continue
-
-        path = os.path.join(data_dir, file)
-        path = os.path.join(data_dir, 'C01008130798.jpg')
-        try:
-            # img = cv2.imread(path)
-            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img = np.array(Image.open(path))
-        except:
-            print('cannot load img', path)
-            continue
-
-        # pred = smile_pipeline.predict_image_async(img, show=True)
-        # print(pred)
-
-        pred_coro = pipeline.predict_image_async(img)
-        res = asyncio.run(pred_coro)
-        # print(res)
-        break
         

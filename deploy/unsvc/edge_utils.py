@@ -4,7 +4,7 @@ import torch
 
 camera_dict= {
     'z_init':400,
-    'z_init_width':32.785,
+    'z_init_width':33,
     'z_change':6.8689/90,
     'y_init_11_low':145,
     'y_change':4,
@@ -108,12 +108,12 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
     
     width_11 = np.mean(pos_tooth_right[int(len(pos_tooth_right)/3):int(len(pos_tooth_right)/3*2)])\
                -np.mean(pos_tooth_left[int(len(pos_tooth_left)/3):int(len(pos_tooth_left)/3*2)])
-    width_11 = width_11.clip(30,35)
+    width_11 = width_11.clip(25,32)
 
     camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-1)/camera_dict['z_change']
     camera_y = (np.mean(pos_tooth_down[pos_tooth_down>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
-    camera_x = (mid-127)/camera_dict['y_change']
-    print(camera_x)
+    camera_x = (mid-130)/camera_dict['y_change']
+
 
     # distance of mask to the top of upper edge and the upper edge to the down edge
     edgeu_up, edgeu_down = mask_length(edgeu)
@@ -122,12 +122,14 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
     pos_edgeu_up = edgeu_up[edgeu_up>0]
     pos_edged_up = edged_up[edged_up>0]
     
-    dist_edgeu_edged = np.mean(pos_edged_up[int(len(pos_edged_up)/3):int(len(pos_edged_up)/3*2)])\
-               -np.mean(pos_edgeu_down[int(len(pos_edgeu_down)/3):int(len(pos_edgeu_down)/3*2)])
-
-    dist_mask_edgeu = np.mean(pos_edgeu_up[int(len(pos_edgeu_up)/3):int(len(pos_edgeu_up)/3*2)])\
-               -np.mean(pos_up_mask[int(len(pos_up_mask)/3):int(len(pos_up_mask)/3*2)])
-    
+    # dist_edgeu_edged = np.mean(pos_edged_up[int(len(pos_edged_up)/3):int(len(pos_edged_up)/3*2)])\
+    #            -np.mean(pos_edgeu_down[int(len(pos_edgeu_down)/3):int(len(pos_edgeu_down)/3*2)])
+    dist_edgeu_edged = np.mean(pos_edged_up)\
+               -np.mean(pos_edgeu_down)
+    # dist_mask_edgeu = np.mean(pos_edgeu_up[int(len(pos_edgeu_up)/3):int(len(pos_edgeu_up)/3*2)])\
+    #            -np.mean(pos_up_mask[int(len(pos_up_mask)/3):int(len(pos_up_mask)/3*2)])+2
+    dist_mask_edgeu = (np.mean(pos_edgeu_up)\
+               -np.mean(pos_up_mask))*1.1
     camera_y = camera_y - dist_mask_edgeu/camera_dict['y_change'] # move the upper edge to the top of mask 
     
     if dist_edgeu_edged>threshold[0]:
@@ -135,8 +137,8 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
         dist_edgeu_edged = dist_edgeu_edged/camera_dict['y_change']
     else:
         dist_edgeu_edged = 0
-        
-    dist_edgeu_edged = dist_edgeu_edged+dist_mask_edgeu/camera_dict['y_change']/2
+  
+    dist_edgeu_edged = dist_edgeu_edged+dist_mask_edgeu/camera_dict['y_change']
 
     return {'camerax':camera_x, 'cameray':camera_y, 'cameraz':camera_z, 
             'dist':dist_edgeu_edged, 'anglez': angle_z, 'x1':left_edge, 'x2':right_edge}
@@ -163,7 +165,6 @@ def _edge_pred(parameter, mask):
     pred_edge = cv2.dilate(pred_edge, np.ones((3,3))) 
 
     if narrow_edge(pred_edge/255, x2-x1):
-        print('narrow')
         return None
     return pred_edge
 

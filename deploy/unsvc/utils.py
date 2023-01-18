@@ -215,3 +215,25 @@ def yolo_postprocess(outputs, meta, score_thr=0.4, iou_thr=0.4, class_agnostic=F
         objs[l].append(bbox)
 
     return objs
+
+def preprocess_image(image, dst_shape, resize_ratio=1., bbox=None, align_mode='center', pad_val=0, interpolation=None,
+                     keep=False):
+    height, width = image.shape[:2]
+    if isinstance(dst_shape, int):
+        dst_shape = (dst_shape, dst_shape)
+
+    meta = compute_meta((width, height), dst_shape, resize_ratio, bbox, align_mode, keep=keep)
+    resize_shape = meta['resize_shape']
+    x1, y1, x2, y2 = meta['rect']
+    dleft, dtop, dright, dbottom = meta['offsets']
+
+    image = image[y1:y2, x1:x2]
+    image = cv2.resize(image, resize_shape, interpolation=interpolation)
+    if len(image.shape) != 3:
+        image = image[..., None]
+
+    dst_width, dst_height = dst_shape
+    image = np.pad(image, ((dtop, dst_height - dbottom), (dleft, dst_width - dright), (0, 0)), mode='constant',
+                   constant_values=pad_val)
+
+    return image, meta
