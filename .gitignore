@@ -129,6 +129,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 2022.12.13/
+lightning_logs/
 *.onnx
 *.jpg
 *.pt
