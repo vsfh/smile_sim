@@ -234,8 +234,7 @@ class TeethGenerator(nn.Module):
 
             latent = torch.cat([latent, latent2], 1)
 
-        encoder_input = torch.rand_like(real_image)*(1-mask)*0.9+real_image*0.1
-        geometry_features = self.geometry_encoder(encoder_input)
+        geometry_features = self.geometry_encoder(real_image)
 
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
@@ -264,7 +263,7 @@ class TeethGenerator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, size,channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
+    def __init__(self, size,channel_multiplier=2, input_channnel=3, blur_kernel=[1, 3, 3, 1]):
         super().__init__()
 
         channels = {
@@ -280,7 +279,7 @@ class Discriminator(nn.Module):
         }
         # channels = {k: v // 2 for k, v in channels.items()}
 
-        convs = [ConvLayer(3, channels[size], 1)]
+        convs = [ConvLayer(input_channnel, channels[size], 1)]
 
         log_size = int(math.log(size, 2))
 
