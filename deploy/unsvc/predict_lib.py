@@ -172,7 +172,7 @@ def smile_sim_predict(
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
-        return image, roundn
+        return None
     mouth = template[y: y + 256, x: x + 256]
     
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
@@ -180,7 +180,7 @@ def smile_sim_predict(
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
-        return image, roundn
+        return None
 
     # step 2. edgenet seg mouth
     seg_result = _seg_mouth(mouth, triton_client)
@@ -195,7 +195,7 @@ def smile_sim_predict(
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (int(width/2), int(height/2)), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
-        return image, roundn
+        return None
     
     try:
         tid = _seg_tid(mouth, server_url)
@@ -210,15 +210,8 @@ def smile_sim_predict(
 
     input_image = mouth.astype(np.float32) / 255 * 2 - 1
     
-    # a = np.zeros((256,256,3))
-    # a[...,0] = mask[...,0]*255
-    # a[...,1] = edge[...,0]*255
-    # cv2.imshow('fg', a.astype(np.uint8))
-    # cv2.imshow('edge', edge.astype(np.uint8)*255)
-    # cv2.waitKey(0) 
     if parameter is None:
         error_mes = 'teeth blur'
-        # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
         input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
         network_name = 'new_smile_wo_edge_gan'
     else:
@@ -233,7 +226,6 @@ def smile_sim_predict(
             input_dict = {'input_image':input_image,'mask':cir_mask,'edge':edge,'big_mask':big_mask}
             network_name = 'smile_sim_lip_preserve-up_net'
         else:
-            # cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((33, 33)))[...,None]-big_mask
             error_mes = 'render fail'
             input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
             network_name = 'new_smile_wo_edge_gan'
@@ -243,33 +235,48 @@ def smile_sim_predict(
     aligned_mouth = aligned_mouth.astype(np.uint8)
     
     template[y: y + 256, x: x + 256] = aligned_mouth
-    mid_x = _face_mid(template, True)
+    # mid_x = _face_mid(template, True)
     
     image = cv2.resize(template, (width, height))
     if not error_mes is None:
+        print(error_mes)
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
-    return image, roundn
+        
+        return None
+    return aligned_mouth, image
 
+    
 if __name__=="__main__":
     
     import os
-    path = '/home/disk/data/smile_sim/tianshi/face'
+    path = '/home/disk/data/smile_sim/cvat/face'
     for file in os.listdir(path):
         print(file)
         img_path = os.path.join(path,file)
-        img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
+        # img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         server_url = '0.0.0.0:8001'
         
         with open(img_path, 'rb') as f:
             rot_image = f.read()
-        output,_ = smile_sim_predict(rot_image, rgb_image, server_url)
-        output = np.array(cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
-        
-        img_name = img_path.split('/')[-1]
-        # cv2.imwrite(os.path.join('/home/disk/data/smile_sim/cvat/new_face', img_name), output)
-        cv2.imshow('img', output)
-        cv2.waitKey(0)
-        break
+        output = smile_sim_predict(rot_image, rgb_image, server_url)
+        if output is not None:
+            
+            align_image = np.array(cv2.cvtColor(output[0], cv2.COLOR_RGB2BGR))
+            align_face = np.array(cv2.cvtColor(output[1], cv2.COLOR_RGB2BGR))
+            
+            img_name = img_path.split('/')[-1][:13]
+            os.makedirs(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', exist_ok=True)
+            before_image = cv2.imread(os.path.join('/home/disk/data/smile_sim/cvat/face_seg_22_11_25' , img_name, 'mouth.png'))
+            before_mask = cv2.imread(os.path.join('/home/disk/data/smile_sim/cvat/face_seg_22_11_25', img_name, 'mask.png'))
+            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'align.png'), align_image)
+            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'mask.png'), before_mask)
+            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'mouth.png'), before_image)
+            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/face/{img_name}.png'), align_face)
+            
+            
+        # cv2.imshow('img', output)
+        # cv2.waitKey(0)
+        # break

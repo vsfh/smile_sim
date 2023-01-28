@@ -71,7 +71,7 @@ def test_single_full():
     zero_ = 0
     
     model = TeethGenerator(256, 256, 8).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/tmp/edge/070000.pt', map_location=lambda storage, loc: storage)
+    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.1.9/030000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     
     # trans = cls(n_channels=3).cuda()
@@ -92,7 +92,7 @@ def test_single_full():
     # sample_z = torch.load(f'{save_path}/_3.pth').cuda()
     for file in os.listdir(sample_dir):
         img_path = os.path.join(sample_dir,file)
-        img_path = '/home/meta/sfh/data/smile/40photo/BC01000286950.jpg'
+        img_path = '/home/meta/sfh/data/smile/40photo/BC01000007533.jpg'
         # img_path = '/home/disk/data/smile_sim/tianshi/face/577912.jpg'
         
         print(file)
@@ -196,7 +196,7 @@ def test_single_full():
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
             cv2.imwrite(f"{save_path}/all/{i}.png",cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
             # break
-        # break
+        break
 
 
 

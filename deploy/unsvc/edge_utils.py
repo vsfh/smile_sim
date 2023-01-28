@@ -112,7 +112,7 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
 
     camera_z = camera_dict['z_init']-(width_11-camera_dict['z_init_width']-1)/camera_dict['z_change']
     camera_y = (np.mean(pos_tooth_down[pos_tooth_down>0])-camera_dict['y_init_11_low']-(width_11-camera_dict['z_init_width'])/2)/camera_dict['y_change']
-    camera_x = (mid-130)/camera_dict['y_change']
+    camera_x = (mid-128)/camera_dict['y_change']
 
 
     # distance of mask to the top of upper edge and the upper edge to the down edge

@@ -450,8 +450,7 @@ class fuck(Dataset):
                                 glob.glob('/data/shenfeihong/tianshi_1.4_seg/*/mouth.png')+\
                                 glob.glob('/data/shenfeihong/tianshi_seg/*/mouth.png')   
                                 # glob.glob('/mnt/share/shenfeihong/data/smile_/seg_6000/*/mouth.jpg')+\
-                                        
-                                    # glob.glob('/data/shenfeihong/ffhq_seg/*/mouth.jpg')
+                                # glob.glob('/data/shenfeihong/ffhq_seg/*/mouth.jpg')
         self.align_teeth = glob.glob('/data/shenfeihong/new_face/*')
         self.transform = transforms.Compose(
                             [

@@ -45,7 +45,7 @@ def convert_to_onnx():
         'align_img': {0: 'batch_size'}
     }
 
-    output_path = 'model.onnx'
+    output_path = '/home/disk/triton/backup_model/smile_sim_lip_preserve-up_net/1/new_model.onnx'
     # input = './smile/C01001459133.jpg'
     input1 = torch.randn(1, 3, 256, 256).cuda()
     input2 = torch.randn(1, 1, 256, 256).cuda()

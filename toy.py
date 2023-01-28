@@ -47,7 +47,7 @@ def noise():
 def test_single_full():
     from cgan import TeethGenerator
     model = TeethGenerator(256, 256, 2).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/165000.pt', map_location=lambda storage, loc: storage)
+    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
