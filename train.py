@@ -172,8 +172,10 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
             break
 
         real_batch = next(loader)
-        real_img = real_batch['images'].to(device)
-        mask = real_batch['mask'].to(device)
+        real_img = real_batch['mouth'].to(device)
+        align_img = real_batch['align_img'].to(device)
+        
+        mask = 1-real_batch['mask'].to(device)
 
         requires_grad(generator, False)
         requires_grad(discriminator, True)
@@ -188,8 +190,12 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         else:
             real_img_aug = real_img
 
+        if args.project:
+            fake_img = torch.cat((fake_img, align_img), 1)
+            real_img_aug = torch.cat((real_img_aug, align_img), 1)
+            
         fake_pred = discriminator(fake_img)
-        real_pred = discriminator(real_img_aug)
+        real_pred = discriminator(align_img)
         d_loss = d_logistic_loss(real_pred, fake_pred)
 
         loss_dict["d"] = d_loss
@@ -207,7 +213,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         d_regularize = i % args.d_reg_every == 0
 
         if d_regularize:
-            real_img.requires_grad = True
+            align_img.requires_grad = True
 
             if args.augment:
                 real_img_aug, _ = augment(real_img, ada_aug_p)
@@ -215,8 +221,11 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
             else:
                 real_img_aug = real_img
 
-            real_pred = discriminator(real_img_aug)
-            r1_loss = d_r1_loss(real_pred, real_img)
+            if args.project:
+                real_img_aug = torch.cat((real_img_aug, align_img), 1)
+                
+            real_pred = discriminator(align_img)
+            r1_loss = d_r1_loss(real_pred, align_img)
 
             discriminator.zero_grad()
             (args.r1 / 2 * r1_loss * args.d_reg_every + 0 * real_pred[0]).backward()
@@ -234,8 +243,11 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         if args.augment:
             fake_img, _ = augment(fake_img, ada_aug_p)
 
+        if args.project:
+            fake_img = torch.cat((fake_img, align_img), 1)
+            
         fake_pred = discriminator(fake_img)
-        g_loss = g_nonsaturating_loss(fake_pred)
+        g_loss = g_nonsaturating_loss(fake_pred)*0.1 + nn.MSELoss()(fake_img, align_img)
 
         loss_dict["g"] = g_loss
 
@@ -446,8 +458,9 @@ if __name__ == "__main__":
 
     args.latent = 256
     args.n_mlp = 1
-    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20'
+    args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.19'
     args.start_iter = 0
+    args.project = False
 
 
     from cgan import TeethGenerator, Discriminator
@@ -456,7 +469,7 @@ if __name__ == "__main__":
         args.size, args.latent, args.n_mlp, channel_multiplier=args.channel_multiplier
     ).to(device)
     discriminator = Discriminator(
-        args.size, channel_multiplier=args.channel_multiplier
+        args.size, channel_multiplier=args.channel_multiplier, input_channnel=3
     ).to(device)
     g_ema = TeethGenerator(
         args.size, args.latent, args.n_mlp, channel_multiplier=args.channel_multiplier
@@ -513,7 +526,7 @@ if __name__ == "__main__":
         )
 
 
-    dataset = fuck()
+    dataset = pair()
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,

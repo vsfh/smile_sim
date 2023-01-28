@@ -12,7 +12,7 @@ def noise():
     from train_less_cgan import mixing_noise
     from cgan import TeethGenerator
     model = TeethGenerator(256, 512, 8).cuda()
-    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/150000.pt', map_location=lambda storage, loc: storage)
+    ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     # sample_z = torch.randn((4,512)).cuda()
     
