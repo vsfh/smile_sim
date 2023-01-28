@@ -1,5 +1,5 @@
-# from cgan import TeethGenerator
-from edge_gan import TeethGenerator
+from cgan import TeethGenerator
+# from edge_gan import TeethGenerator
 # from encoders.psp_encoders import GradualStyleEncoder
 import torch
 import torch.nn as nn
@@ -25,15 +25,12 @@ class Gen_wo_edge(nn.Module):
     def __init__(self):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
-        self.decoder = TeethGenerator(256, 256, n_mlp=8).cuda()
-        self.sample_z = torch.load('./2022.12.13/wo_edge/test/pth/31.pth').cuda()
+        self.decoder = TeethGenerator(256, 256, 1).cuda()
+        self.sample_z = torch.randn((1,256)).cuda()
 
-    def forward(self, real_img, mask, big_mask):
-        sample_z = [self.decoder.style(self.sample_z)]
-        images,_ = self.decoder(sample_z, real_image=real_img, mask=mask,
-                                            input_is_latent=True,
-                                            randomize_noise=False)
-        images = real_img*(1-big_mask)+images*big_mask
+    def forward(self, real_img, mask):
+        images,_ = self.decoder([self.sample_z], real_image=real_img, mask=1-mask,
+                                            input_img=True)
         return images
           
 def convert_to_onnx():
@@ -68,6 +65,33 @@ def convert_to_onnx():
     output_name = ['align_img']
     torch.onnx.export(model, (input1, input2, input3, input4), output_path, export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=13, dynamic_axes=dynamic_axes)
+    
+def convert_wo_to_onnx():
+    dynamic_axes = {
+        'input_image': {0: 'batch_size'},
+        'mask': {0: 'batch_size'},
+        'edge': {0: 'batch_size'},
+        'big_mask': {0: 'batch_size'},
+        'align_img': {0: 'batch_size'}
+    }
+
+    output_path = '/home/disk/triton/backup_model/new_smile_wo_edge_gan/1/new_model.onnx'
+    # input = './smile/C01001459133.jpg'
+    input1 = torch.randn(1, 3, 256, 256).cuda()
+    input2 = torch.randn(1, 1, 256, 256).cuda()
+    input3 = torch.randn(1, 1, 256, 256).cuda()
+    
+    model = Gen_wo_edge().eval().cuda()
+    ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt'
+    
+    ckpt_decoder_ = torch.load(ckpt_decoder, map_location=lambda storage, loc: storage)
+    model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
+    input_name = ['input_image','mask']
+    
+    output_name = ['align_img']
+    torch.onnx.export(model, (input1, input2), output_path, export_params=True, input_names=input_name, output_names=output_name,
+                      opset_version=13, dynamic_axes=dynamic_axes)
+    
 import cv2
 import numpy as np
 import onnxruntime
@@ -154,4 +178,4 @@ def model_infer():
     align_img = model(img, mask, big_mask)
     align_img = align_img[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
     cv2.imwrite('img.jpg', cv2.cvtColor(align_img, cv2.COLOR_RGB2BGR).astype(np.uint8))
-convert_to_onnx()
+convert_wo_to_onnx()

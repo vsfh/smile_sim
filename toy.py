@@ -46,7 +46,7 @@ def noise():
 # torch.cuda.manual_seed(666)
 def test_single_full():
     from cgan import TeethGenerator
-    model = TeethGenerator(256, 256, 2).cuda()
+    model = TeethGenerator(256, 256, 1).cuda()
     ckpt_down = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt', map_location=lambda storage, loc: storage)
     model.load_state_dict(ckpt_down["g_ema"])
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
@@ -54,7 +54,7 @@ def test_single_full():
     sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
     sample_dir = '/mnt/share/shenfeihong/tmp/test/40photo'
     
-    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.12.20/test'
+    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/test'
     for i in range(100):
         sample_z = torch.randn((1,256)).cuda()
         # sample_z = torch.load(f'{save_path}/pth/95.pth').cuda()
@@ -93,7 +93,7 @@ def test_single_full():
             mouth_tensor = mouth/255*2-1
             mouth_tensor = torch.from_numpy(mouth_tensor.transpose(2,0,1).astype(np.float32)[None]).cuda()
 
-            sample, _ = model(sample_z, real_image=mouth_tensor, mask=1-mask, input_img=True)
+            sample, _ = model([sample_z], real_image=mouth_tensor, mask=1-mask, input_img=True)
             sample = sample[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
             # sample = big_mask[...,None]*sample+(1-big_mask[...,None])*mouth
             image[y: y + 256, x: x + 256] = sample.clip(0,255)
