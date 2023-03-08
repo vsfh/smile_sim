@@ -25,8 +25,9 @@ class BaseModel():
                                                      run_options=run_options,
                                                      providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         else:
-            import tritoninferencer as tinf
-            self.client = tinf.create_client(self.model_root)
+            from tritoninferencer import TritonInferencer
+            self.client = TritonInferencer("0.0.0.0:8001")
+            # self.client = tinf.create_client(self.model_root)
 
     def inference(self, input_feed):
         if not isinstance(input_feed, dict):
@@ -39,8 +40,9 @@ class BaseModel():
                 outputs[node.name] = result[i]
 
         elif self.backend == 'web':
-            import tritoninferencer as tinf
-            outputs = tinf.infer(self.model_name, input_feed, self.client)
+            from tritoninferencer import TritonInferencer
+            tinf = TritonInferencer("0.0.0.0:8001")
+            outputs = tinf.infer_sync(self.model_name, input_feed, [])
 
         return outputs
 
