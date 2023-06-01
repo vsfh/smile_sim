@@ -257,7 +257,7 @@ if __name__=="__main__":
         # img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        server_url = '0.0.0.0:8001'
+        server_url = '127.0.0.1:8001'
         
         with open(img_path, 'rb') as f:
             rot_image = f.read()
@@ -271,12 +271,7 @@ if __name__=="__main__":
             os.makedirs(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', exist_ok=True)
             before_image = cv2.imread(os.path.join('/home/disk/data/smile_sim/cvat/face_seg_22_11_25' , img_name, 'mouth.png'))
             before_mask = cv2.imread(os.path.join('/home/disk/data/smile_sim/cvat/face_seg_22_11_25', img_name, 'mask.png'))
-            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'align.png'), align_image)
-            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'mask.png'), before_mask)
-            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/pair/{img_name}', 'mouth.png'), before_image)
-            cv2.imwrite(os.path.join(f'/home/disk/data/smile_sim/align_pair/face/{img_name}.png'), align_face)
-            
-            
+
         # cv2.imshow('img', output)
         # cv2.waitKey(0)
         # break

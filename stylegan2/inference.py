@@ -6,7 +6,7 @@ import torch
 from torch.utils import data
 import cv2
 
-from dataset import SmileDataset
+from mydataset import SmileDataset
 
 
 def make_noise(batch, latent_dim, n_noise, device):

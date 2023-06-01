@@ -19,7 +19,7 @@ except ImportError:
     wandb = None
 
 
-from dataset import MultiResolutionDataset
+from mydataset import MultiResolutionDataset
 from distributed import (
     get_rank,
     synchronize,

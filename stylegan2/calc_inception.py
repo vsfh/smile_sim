@@ -12,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 
 from inception import InceptionV3
-from dataset import MultiResolutionDataset
+from mydataset import MultiResolutionDataset
 
 
 class Inception3Feature(Inception3):
