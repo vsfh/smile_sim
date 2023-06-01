@@ -3,17 +3,17 @@ import numpy as np
 import cv2
 import tritoninferencer as tif
 from io import BytesIO
-from edge_utils import parameter_pred, _edge_pred
+from edge_utils import parameter_pred
 
-def _find_objs(image, triton_client):
+def _find_objs(image, tinf):
     yolo_input_shape = (640, 640)
     original_h, original_w = image.shape[:2]
     resized_image, meta = utils.resize_and_pad(image, yolo_input_shape)
     offsets = meta['offsets']
     scale = meta['scale']
     input_imgs = utils.normalize_img(resized_image)
-    output = tif.infer('smile_sim_lip_preserve-yolov5',
-                       {'images': input_imgs}, triton_client)
+    output = tinf.infer_sync('smile_sim_lip_preserve-yolov5',
+                       {'images': input_imgs}, ['output'])
     output = output['output'][0]
     xywh = output[:, :4]
     probs = output[:, 4:5] * output[:, 5:]
@@ -38,7 +38,7 @@ def _find_objs(image, triton_client):
 
         coords = utils.loose_bbox(coords, (original_w, original_h))
         objs.append(coords)
-    objs = np.array(objs, dtype=np.int)
+    objs = np.array(objs, dtype=int)
     return objs
 
 def _face_mid(image, show=False):
@@ -52,33 +52,34 @@ def _face_mid(image, show=False):
     # v1 = res['ly']['Sn']
     # v2 = res['ly']['V2']
     
-    if res['ly']['V1'][1]<0:
+    if res['ly']['G'][1]<0:
         return 0
     
     # target_y = (res['ly']['Ch(L)'][1]+res['ly']['Ch(R)'][1])/2
     # target_x = v1[0]+(v2[0]-v1[0])*(target_y-v1[1])/(v2[1]-v1[1])
-    target_x = res['ly']['Sn'][0]
+    target_x = res['ly']['G'][0]
     return target_x
 
-def _seg_mouth(image, triton_client):
+def _seg_mouth(image, tinf):
     seg_input_shape = (256, 256)
     resized_image, _ = utils.resize_and_pad(image, seg_input_shape)
     input_imgs = utils.normalize_img(resized_image)
-    output = tif.infer('smile_sim_lip_preserve-edge_net',
-                       {'data': input_imgs}, triton_client)
+    output = tinf.infer_sync('smile_sim_lip_preserve-edge_net',
+                       {'data': input_imgs}, ['output'])
     output = np.transpose(output['output'][0], (1, 2, 0))
     output = utils.sigmoid(output)
     return output
 
-def face_rot(image, triton_client, height, width):
+def face_rot(image, tinf, height, width):
  
     # width, height = imagesize.get(BytesIO(image))        
 
     meta = utils.compute_meta((width, height), (640, 640), align_mode='topleft')
     
     image = np.frombuffer(image, dtype = np.uint8)
-    res = tif.infer('cls-ensemble',
-                    {'image_bin': image}, triton_client) 
+
+    res = tinf.infer_sync('cls-ensemble',
+                    {'image_bin': image[None, ...]}, ['output']) 
     res = utils.yolo_postprocess(res, meta,
                             iou_thr=0.2,
                             score_thr=0.3,
@@ -106,16 +107,16 @@ def face_rot(image, triton_client, height, width):
     roundn = int(round(angle / 90)) % 4
     return roundn
 
-def _seg_tid(image, triton_client):
+def _seg_tid(image, tinf):
     from tid_models import get_tid, get_yolo
-    teeth_model = get_yolo(triton_client)
+    teeth_model = get_yolo(tinf)
     tid = get_tid(teeth_model=teeth_model, img=image)
 
     return tid
    
-def _gan(input_dict, network_name, triton_client):
+def _gan(input_dict, network_name, tinf):
     input_dict = {k: utils.normalize_img(v) for k, v in input_dict.items()}
-    output = tif.infer(network_name, input_dict, triton_client)
+    output = tinf.infer_sync(network_name, input_dict, ['align_img'])
     output = output['align_img'][0].transpose(1, 2, 0)
     output = (output + 1.0) / 2.0
     return output
@@ -136,20 +137,22 @@ def smile_sim_predict(
     '''
 
     # step 0. create triton client
-    triton_client = tif.create_client(server_url)
     height, width = image.shape[:2]
-    roundn = face_rot(rot_image, triton_client, height, width)
+    roundn = face_rot(rot_image, tinf, height, width)
     image = np.rot90(image, -roundn)
     height, width = image.shape[:2]
 
     error_mes = None
     # step 1. find mouth obj
-    objs = _find_objs(image, triton_client)
+    objs = _find_objs(image, tinf)
 
     mouth_objs = objs[2]
     x1, y1, x2, y2 = mouth_objs
     if x1==x2 and y1==y2:
         error_mes = 'not smile image'
+        print(error_mes)
+        image = cv2.resize(image, (int(width), int(height)), cv2.INTER_AREA)
+        
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
         return image, roundn
@@ -167,8 +170,11 @@ def smile_sim_predict(
 
     template = cv2.resize(image, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
     mid_x = _face_mid(template, False)
+    print(mid_x)
     if mid_x==0:
         error_mes = 'too close'
+        print(error_mes)
+        
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
@@ -177,13 +183,15 @@ def smile_sim_predict(
     
     if mouth.shape[0]!=256 or mouth.shape[1]!=256:
         error_mes = 'small image'
+        print(error_mes)
+        
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (width//2, height//2), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
         return None
 
     # step 2. edgenet seg mouth
-    seg_result = _seg_mouth(mouth, triton_client)
+    seg_result = _seg_mouth(mouth, tinf)
 
     edge = (seg_result[..., 1] > 0.6).astype(np.float32)
     up_edge = (seg_result[..., 3] > 0.6).astype(np.float32)
@@ -192,24 +200,40 @@ def smile_sim_predict(
     
     if(np.sum(teeth_mask)<10):
         error_mes = 'no teeth show'
+        print(error_mes)
+        
         image = cv2.resize(template, (width, height))
         cv2.putText(image, error_mes, (int(width/2), int(height/2)), cv2.FONT_HERSHEY_SIMPLEX, 
             0.7,(255,255,255), 1, cv2.LINE_AA)
         return None
     
-    try:
-        tid = _seg_tid(mouth, server_url)
-        print('mouth_pos:',x,y)
-        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid, mid_x-x)
-    except:
-        parameter = None
+    contours, _ = cv2.findContours(teeth_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if len(contours)>1:
+        area = []
+        for k in range(len(contours)):
+            area.append(cv2.contourArea(contours[k]))
+        idx = np.argmax(np.array(area))
+        for k in range(len(contours)):
+            if k!= idx:
+                teeth_mask = cv2.drawContours(teeth_mask, contours, k, 0, cv2.FILLED)
+    
+    
     big_mask = cv2.dilate(teeth_mask, kernel=np.ones((3, 3)))
     cir_mask = cv2.dilate(teeth_mask, kernel=np.ones((23, 23)))-big_mask
     cir_mask = cir_mask[...,None]
     big_mask = big_mask[...,None]
+    
+
+
 
     input_image = mouth.astype(np.float32) / 255 * 2 - 1
-    
+    from edge_utils import _edge_pred, parameter_pred
+    try:
+        tid = _seg_tid(mouth, tinf)
+        print('mouth_pos:',x,y)
+        parameter = parameter_pred(up_edge,down_edge,teeth_mask,tid, mid_x-x)
+    except:
+        parameter = None
     if parameter is None:
         error_mes = 'teeth blur'
         input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
@@ -227,15 +251,24 @@ def smile_sim_predict(
             network_name = 'smile_sim_lip_preserve-up_net'
         else:
             error_mes = 'render fail'
-            input_dict = {'input_image':input_image,'mask':cir_mask,'big_mask':big_mask}
+            input_dict = {'input_image':input_image,'mask':big_mask}
             network_name = 'new_smile_wo_edge_gan'
-            
-    aligned_mouth = _gan(input_dict, network_name, triton_client)
+
+    # input_dict = {'input_image':input_image,'mask':big_mask}
+    # network_name = 'new_smile_wo_edge_gan'            
+    aligned_mouth = _gan(input_dict, network_name, tinf)
     aligned_mouth = aligned_mouth.clip(0,1)*255
     aligned_mouth = aligned_mouth.astype(np.uint8)
     
     template[y: y + 256, x: x + 256] = aligned_mouth
+    image = cv2.resize(template, (width, height))
     # mid_x = _face_mid(template, True)
+    cv2.imshow('mask', np.array(big_mask))
+    cv2.imwrite('a.jpg', np.array(cv2.cvtColor(image, cv2.COLOR_RGB2BGR)))
+    
+    # cv2.imshow('img', np.array(cv2.cvtColor(template, cv2.COLOR_RGB2BGR)))
+    cv2.waitKey(0)
+    return None
     
     image = cv2.resize(template, (width, height))
     if not error_mes is None:
@@ -248,13 +281,18 @@ def smile_sim_predict(
 
     
 if __name__=="__main__":
-    
+    from tritoninferencer import TritonInferencer
     import os
     path = '/home/disk/data/smile_sim/cvat/face'
+    path = '/home/meta/sfh/data/smile/40photo'
     for file in os.listdir(path):
         print(file)
         img_path = os.path.join(path,file)
-        # img_path = '/home/meta/sfh/data/smile/40photo/BC01000220947.jpg'
+        img_path = '/home/meta/sfh/data/smile/40photo/77.png'
+        img_path = '/home/meta/下载/1.jpg'
+        img_path = '/home/disk/data/smile_sim/align_pair/face/b.jpg'
+        # img_path = '/home/disk/data/smile_sim/cvat/face/BC01000781848_photo_微笑像.JPG'
+        
         image = cv2.imread(img_path)
         rgb_image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         server_url = '127.0.0.1:8001'
@@ -274,4 +312,4 @@ if __name__=="__main__":
 
         # cv2.imshow('img', output)
         # cv2.waitKey(0)
-        # break
+        break

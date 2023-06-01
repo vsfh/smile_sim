@@ -147,7 +147,8 @@ def parameter_pred(edgeu, edged, mask, tid, mid):
 def _edge_pred(parameter, mask):
     from render_utils import render
     
-    dist_lower = parameter['dist']
+    # dist_lower = parameter['dist']
+    dist_lower = 0
     angle_z = parameter['anglez']
     camera_x = parameter['camerax']
     camera_y = parameter['cameray']
