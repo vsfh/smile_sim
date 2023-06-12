@@ -96,8 +96,13 @@ class ControlModel(nn.Module):
         self.control_net = control_net
         self.generator = generator
         self.export = export
-        if export:
-            self.latent, self.noise = generator.prepare([torch.randn(1,512).cuda()])
+
+    def load_state(self, path):
+        self.load_state_dict(torch.load(path)["g_ema"])
+        latent, noise = self.generator.prepare([torch.randn(1,512).cuda()])
+        self.latent = latent.detach()
+        # self.noise = [n.detach() for n in noise]
+
     def forward(
         self,
         cond,
@@ -107,10 +112,10 @@ class ControlModel(nn.Module):
         cond_fea = self.control_net(cond)
         if not self.export:
             result, _ = self.generator(styles, c_list = cond_fea, randomize_noise=False)
+            return result, None
         else:
-            result = self.generator.infer(self.latent, self.noise, c_list = cond_fea)
-        
-        return result, None
+            result = self.generator.infer(self.latent, c_list = cond_fea)
+            return result
         
 class Generator(nn.Module):
     def __init__(
@@ -349,7 +354,10 @@ class Generator(nn.Module):
             latent = torch.cat([latent, latent2], 1)
         return latent, noise
     
-    def infer(self, latent, noise, c_list):
+    def infer(self, latent, c_list):
+        noise = [
+            getattr(self.noises, f"noise_{i}") for i in range(self.num_layers)
+        ]
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
 

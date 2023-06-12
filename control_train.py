@@ -239,13 +239,12 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
 
         real_batch = next(loader)
         real_img = real_batch['images']
-        mask = real_batch['mask']
-        edge = real_batch['edge']
-        tmask = real_batch['tmask']
+        # mask = real_batch['mask']
+        # edge = real_batch['edge']
+        # tmask = real_batch['tmask']
         
-        cond = mask*edge*0.1 + (1-mask)*real_img + (1-edge)*tmask
-        
-        cond = cond.to(device)
+        # cond = mask*edge*0.1 + (1-mask)*real_img + (1-edge)*tmask
+        cond = real_batch['cond'].to(device)
         real_img = real_img.to(device)
 
         requires_grad(generator, False)
@@ -599,7 +598,7 @@ if __name__ == "__main__":
         )
 
 
-    dataset = YangOldNew()
+    dataset = Tianshi()
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,
