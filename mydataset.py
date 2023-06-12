@@ -74,6 +74,9 @@ class Tianshi(Dataset):
         edge = cv2.imread(os.path.join(self.path, img_folder, 'edge.png'))
         up_edge = cv2.imread(os.path.join(self.path, img_folder, 'up_edge.png'))
         
+        edge = cv2.erode(edge, kernel=np.ones((3, 3)))
+        up_edge = cv2.erode(up_edge, kernel=np.ones((3, 3)))
+        
         contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         tmask = np.zeros_like(edge)
         cv2.drawContours(tmask, contours, -1, (255), thickness=cv2.FILLED)
@@ -82,7 +85,7 @@ class Tianshi(Dataset):
         mk = self.preprocess(mask)
         ed = self.preprocess(edge)
         tk = self.preprocess(tmask)
-        up = self.preprocess(up)
+        up = self.preprocess(up_edge)
         
         cond = 0.1*ed*mk+0.5*up*mk+(1-mk)*im+(1-ed)*tk
         return {'images': im, 'cond': cond}
