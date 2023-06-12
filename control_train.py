@@ -525,7 +525,7 @@ if __name__ == "__main__":
 
         args.latent = 512
         args.n_mlp = 8
-        args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2023.5.26'
+        args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2023.6.12'
         args.start_iter = 0
         args.project = True
         return args
