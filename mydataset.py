@@ -55,7 +55,50 @@ class YangOldNew(Dataset):
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
         
+class Tianshi(Dataset):
+    def __init__(self, mode='decoder'):
+        self.path_1 = '/data/shenfeihong/tianshi_seg/'
+        self.path_2 = '/data/shenfeihong/tianshi_1.4_seg/'
+        self.all_files = os.listdir(self.path_1)+os.listdir(self.path_2)
+        print('total image:', len(self.all_files))
+        self.mode = mode
+        self.half = False
+    
+    def __len__(self):
+        return len(self.all_files)
+    
+    def __getitem__(self, index):
+        img_folder = self.all_files[index]
+        img = cv2.imread(os.path.join(self.path, img_folder, 'mouth.jpg'))
+        mask = cv2.imread(os.path.join(self.path, img_folder, 'mask.png'))
+        edge = cv2.imread(os.path.join(self.path, img_folder, 'edge.png'))
+        up_edge = cv2.imread(os.path.join(self.path, img_folder, 'up_edge.png'))
+        
+        contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        tmask = np.zeros_like(edge)
+        cv2.drawContours(tmask, contours, -1, (255), thickness=cv2.FILLED)
 
+        im = self.preprocess(img)
+        mk = self.preprocess(mask)
+        ed = self.preprocess(edge)
+        tk = self.preprocess(tmask)
+        up = self.preprocess(up)
+        
+        cond = 0.1*ed*mk+0.5*up*mk+(1-mk)*im+(1-ed)*tk
+        return {'images': im, 'cond': cond}
+        
+        # return {'images': im, 'mask': mk, 'edge':ed, 'tmask':tk}
+        
+    def preprocess(self, img):
+        img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        if len(img_resize.shape)==2:
+            img_resize = img_resize[:,:,None].repeat(1,1,3)
+        im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
+        im = torch.from_numpy(im)  # to torch
+        im = im.half() if self.half else im.float()  # uint8 to fp16/32
+        im /= 255.0  # 0-255 to 0.0-1.0
+        return im
+    
 def mask_proc(mask, dilate=True):
         mask = np.array(mask)/255
         if len(mask.shape) == 3:
