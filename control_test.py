@@ -56,7 +56,7 @@ def get_cond_x():
 
 def test():
     model = ControlModel(256,512,8).cuda()
-    model.load_state_dict(torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.5.26/040000.pt')["g_ema"])
+    model.load_state_dict(torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.5.26/080000.pt')["g_ema"])
     
     cond = get_cond_x().unsqueeze(0).cuda()
     noise = [torch.randn(1,512).cuda()]
