@@ -26,6 +26,10 @@ def get_cond():
     # tmask[tmask==tmask.max()] = 0
     # tmask[tmask>0] = 255
     # tmask[mask==0] = 0
+    cv2.imshow('edge0', edge[...,0])
+    cv2.imshow('edge0', edge[...,0])
+    cv2.imshow('edge0', edge[...,0])
+    cv2.waitKey(0)
     edge = cv2.dilate(edge, kernel=np.ones((3,3))).sum(-1).clip(0,255).astype(np.uint8)
     contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -85,7 +89,7 @@ def get_cond_x():
 
 def test():
     model = ControlModel(256,512,8,export=True).cuda()
-    model.load_state('/mnt/share/shenfeihong/weight/smile-sim/2023.5.26/080000.pt')
+    model.load_state('/mnt/share/shenfeihong/weight/smile-sim/2023.6.25/040000.pt')
     
     cond, mk = get_cond_x()
     cond = cond.unsqueeze(0).cuda()
@@ -124,12 +128,12 @@ def onnx_export():
                       opset_version=16, dynamic_axes=dynamic_axes)
 if __name__=='__main__':
     # path = '/mnt/share/shenfeihong/data/smile_to_b_test/x'
-    ed = cv2.imread('example/1.4.tianshi/598236/edge.png')
-    down = cv2.imread('example/1.4.tianshi/598236/down_edge.png')
-    up = cv2.imread('example/1.4.tianshi/598236/up_edge.png')
+    # ed = cv2.imread('example/1.4.tianshi/598236/edge.png')
+    # down = cv2.imread('example/1.4.tianshi/598236/down_edge.png')
+    # up = cv2.imread('example/1.4.tianshi/598236/up_edge.png')
     
-    cv2.imshow('img', ed-up)
-    cv2.waitKey(0)
+    # cv2.imshow('img', ed-up)
+    # cv2.waitKey(0)
     # edge = cv2.imread(os.path.join(path, 'steps', 'step_025.png'))
     # tmask = cv2.imread(os.path.join(path, 'steps', 'mask_step_025.png'))
     # tmask[tmask==tmask.max()] = 0
@@ -137,4 +141,4 @@ if __name__=='__main__':
     # # tmask[mask==0] = 0
     # cv2.imwrite('img.jpg', tmask)
     # a,b = get_cond()
-    # test()
+    test()
