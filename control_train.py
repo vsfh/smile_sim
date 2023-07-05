@@ -244,14 +244,16 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         # tmask = real_batch['tmask']
         
         # cond = mask*edge*0.1 + (1-mask)*real_img + (1-edge)*tmask
-        cond = real_batch['cond'].to(device)
+        cond = real_batch['cond']
+        
+        cond = cond.to(device)
         real_img = real_img.to(device)
 
         requires_grad(generator, False)
         requires_grad(discriminator, True)
 
         noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise,cond)
+        fake_img, _ = generator(cond, noise,)
 
         if args.augment:
             real_img_aug, _ = augment(real_img, ada_aug_p)
@@ -301,7 +303,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         requires_grad(discriminator, False)
 
         noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise, cond)
+        fake_img, _ = generator(cond, noise)
 
         if args.augment:
             fake_img, _ = augment(fake_img, ada_aug_p)
@@ -383,7 +385,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
             if i % 500 == 0:
                 with torch.no_grad():
                     g_ema.eval()
-                    sample, _ = g_ema([sample_z], cond)
+                    sample, _ = g_ema(cond, [sample_z])
                     utils.save_image(
                         sample,
                         f"{sample_dir}/{str(i).zfill(6)}.png",
@@ -398,7 +400,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         normalize=True,
                         range=(0, 1),
                     )
-            if i % 10000 == 0:
+            if i % 5000 == 0:
                 torch.save(
                     {
                         # "g": g_module.state_dict(),
@@ -525,7 +527,7 @@ if __name__ == "__main__":
 
         args.latent = 512
         args.n_mlp = 8
-        args.weight_dir = '/mnt/share/shenfeihong/weight/smile-sim/2023.6.12'
+        args.weight_dir = '/data/shenfeihong/share/weight/smile/2023.6.25'
         args.start_iter = 0
         args.project = True
         return args
@@ -598,7 +600,7 @@ if __name__ == "__main__":
         )
 
 
-    dataset = Tianshi()
+    dataset = YangOldNew()
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,

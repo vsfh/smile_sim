@@ -21,7 +21,12 @@ def flip(x, dim):
 class YangOldNew(Dataset):
     def __init__(self, mode='decoder'):
         self.path = '/data/shenfeihong/smile/Merged/Teeth'
-        self.all_files = os.listdir(self.path)
+        self.all_files = []
+        
+        with open('/home/gregory/data/yangNew.txt','r') as f_new:
+            self.all_files += [f.strip() for f in f_new.readlines()]
+        with open('/home/gregory/data/yangOld.txt','r') as f_old:
+            self.all_files += [f.strip() for f in f_old.readlines()]
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
@@ -34,16 +39,24 @@ class YangOldNew(Dataset):
         img = cv2.imread(os.path.join(self.path, img_folder, 'Img.jpg'))
         mask = cv2.imread(os.path.join(self.path, img_folder, 'MouthMask.png'))
         edge = cv2.imread(os.path.join(self.path, img_folder, 'TeethEdge.png'))
+        up_edge = cv2.imread(os.path.join(self.path, img_folder, 'TeethEdgeUp.png'))
+        
         tmask = cv2.imread(os.path.join(self.path, img_folder, 'TeethMasks.png'))
         
-
+        # tmask = cv2.erode(tmask, kernel=np.ones((3, 3)))
+        # edge = cv2.erode(edge, kernel=np.ones((3, 3)))
+        # up_edge = cv2.erode(up_edge, kernel=np.ones((3, 3)))
+        
         im = self.preprocess(img)
         mk = self.preprocess(mask)
         ed = self.preprocess(edge)
+        up = self.preprocess(up_edge)
+        
         tk = self.preprocess(tmask)
         
+        cond = 0.1*ed*mk+0.5*up*mk+(1-mk)*im+(1-ed)*tk
         
-        return {'images': im, 'mask': mk, 'edge':ed, 'tmask':tk}
+        return {'images': im, 'cond':cond}
         
     def preprocess(self, img):
         img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
@@ -54,12 +67,14 @@ class YangOldNew(Dataset):
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
-        
+
+from os.path import join as opj
 class Tianshi(Dataset):
     def __init__(self, mode='decoder'):
         self.path_1 = '/data/shenfeihong/tianshi_seg/'
         self.path_2 = '/data/shenfeihong/tianshi_1.4_seg/'
-        self.all_files = os.listdir(self.path_1)+os.listdir(self.path_2)
+        self.all_files = [opj(self.path_1, folder) for folder in os.listdir(self.path_1)]+\
+                        [opj(self.path_2, folder) for folder in os.listdir(self.path_2)]
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
@@ -69,18 +84,21 @@ class Tianshi(Dataset):
     
     def __getitem__(self, index):
         img_folder = self.all_files[index]
-        img = cv2.imread(os.path.join(self.path, img_folder, 'mouth.jpg'))
-        mask = cv2.imread(os.path.join(self.path, img_folder, 'mask.png'))
-        edge = cv2.imread(os.path.join(self.path, img_folder, 'edge.png'))
-        up_edge = cv2.imread(os.path.join(self.path, img_folder, 'up_edge.png'))
+        img = cv2.imread(os.path.join(img_folder, 'mouth.png'))
+        mask = cv2.imread(os.path.join(img_folder, 'mask.png'))
+        edge = cv2.imread(os.path.join(img_folder, 'edge.png'))
+        up_edge = cv2.imread(os.path.join(img_folder, 'up_edge.png'))
         
+        contours, _ = cv2.findContours(edge[...,0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        tmask = np.zeros_like(edge[...,0])
+        cv2.drawContours(tmask, contours, -1, (255), thickness=cv2.FILLED)
+        tmask = tmask[...,None].repeat(3,2)
+        cv2.imwrite('tmask.jpg', tmask.astype(np.uint8))
+
+        tmask = cv2.erode(tmask, kernel=np.ones((3, 3)))
         edge = cv2.erode(edge, kernel=np.ones((3, 3)))
         up_edge = cv2.erode(up_edge, kernel=np.ones((3, 3)))
         
-        contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        tmask = np.zeros_like(edge)
-        cv2.drawContours(tmask, contours, -1, (255), thickness=cv2.FILLED)
-
         im = self.preprocess(img)
         mk = self.preprocess(mask)
         ed = self.preprocess(edge)
@@ -88,6 +106,7 @@ class Tianshi(Dataset):
         up = self.preprocess(up_edge)
         
         cond = 0.1*ed*mk+0.5*up*mk+(1-mk)*im+(1-ed)*tk
+
         return {'images': im, 'cond': cond}
         
         # return {'images': im, 'mask': mk, 'edge':ed, 'tmask':tk}
@@ -229,29 +248,16 @@ def get_loader_unet(size =1, mode='train'):
 if __name__ == '__main__':
     # ds = SmileDataset(r'C:\data\smile_synthesis\smile_segmap', None)
     # ds = SimulationDataset(r'C:\data\smile_synthesis\smile_segmap', None)
-    ds = YangOldNew()
+    ds = Tianshi()
 
     for batch in ds:
-        images = batch['images']
-        mask = batch['mask']
-        edge = batch['edge']
-        print(edge.shape)
-        a = np.zeros((256,256,3))
-        a[...,0] = mask*255
-        a[...,1] = edge*255
-        # print(images.shape, mask.shape)
-        assert images.shape[1]==images.shape[2], 'error'
-        assert mask.shape[1]==mask.shape[2], 'mask error'
-
-        # print(set(input_semantic.flatten()))
-        # print(set(batch['mask'].flatten()))
-
-        # print(input_semantic.shape)
-        # for i, o in enumerate(input_semantic):
-        #     cv2.imshow(str(i), o)
-        #     print(i, o.min(), o.max())
-        # # cv2.imshow('tmp', input_semantic[:3].transpose(1,2,0))
-        cv2.imshow('img', a.astype(np.uint8))
-        cv2.waitKey(0)
+        cond = batch['cond']
+        
+        img = batch['images']
+        cv2.imwrite('cond.jpg', (cond.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
+        cv2.imwrite('img.jpg', (img.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
+        
+        break
+        # cv2.waitKey(0)
 
 
