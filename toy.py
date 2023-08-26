@@ -136,6 +136,13 @@ def test_single():
     
     cv2.imwrite(f"{save_path}/1.png",cv2.cvtColor(sample, cv2.COLOR_RGB2BGR).astype(np.uint8))
 
+
+def find_case():
+    path = '/mnt/e/data/smile/to_b/20220713_SmileyTest_200case'
+    for folder in os.listdir(path):
+        img_path = os.path.join(path, folder, 'smiley.jpg')
+        img = cv2.imread(img_path)
+        cv2.imwrite(f'./example/ll/{folder}.jpg', img)
 if __name__ == "__main__":
-    test_single_full()
+    find_case()
     a = 1
