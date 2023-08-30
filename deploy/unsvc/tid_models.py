@@ -25,9 +25,14 @@ class BaseModel():
                                                      run_options=run_options,
                                                      providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         else:
+            # import tritoninferencer as tinf
             from tritoninferencer import TritonInferencer
-            self.client = TritonInferencer("0.0.0.0:8001")
-            # self.client = tinf.create_client(self.model_root)
+
+            # self.client = TritonInferencer("zh-triton.zh-ml-backend.svc:8001")
+            self.client = TritonInferencer("127.0.0.1:8001")
+            
+            
+
 
     def inference(self, input_feed):
         if not isinstance(input_feed, dict):
@@ -40,9 +45,9 @@ class BaseModel():
                 outputs[node.name] = result[i]
 
         elif self.backend == 'web':
-            from tritoninferencer import TritonInferencer
-            tinf = TritonInferencer("0.0.0.0:8001")
-            outputs = tinf.infer_sync(self.model_name, input_feed, [])
+            import tritoninferencer as tinf
+            # outputs = tinf.infer(self.model_name, input_feed, self.client)
+            outputs = self.client.infer_sync(self.model_name, input_feed, ['bbox','seg','bin1','bin2','proto'])
 
         return outputs
 
@@ -679,6 +684,11 @@ def get_tid(teeth_model, img):
     result = teeth_model.predict(img, show=False)
 
     img_show = np.zeros((256,256))
+    upper = 11
+    lower = 33
+    points_upper = -np.inf
+    points_lower = -np.inf
+    area_dict = {}
     for res in result[0]:
         if len(res['points'])==0:
             continue
@@ -689,9 +699,32 @@ def get_tid(teeth_model, img):
         a = np.argmax(bin1) + 1
         b = np.argmax(bin2) + 1
         fdi = int(a*10+b)
-        if fdi==11 or fdi==21:
-            cv2.fillPoly(img_show, pts=[points.astype(int)[:, None]], color=(fdi))
-    return img_show
+        contour = points.reshape((-1, 1, 2)).astype(np.int32)
+        area = cv2.contourArea(contour)
+        area_dict[fdi] = area
+        if area> points_upper and a in [1]:
+            upper = fdi
+            points_upper = area
+        if area> points_lower and a in [3]:
+            lower = fdi
+            points_lower = area
+    if upper==11 and lower==31:
+        lower = 33
+        
+    for res in result[0]:
+        if len(res['points'])==0:
+            continue
+        points = res['points'][0]
+        bin1 = res['bin1']
+        bin2 = res['bin2']
+
+        a = np.argmax(bin1) + 1
+        b = np.argmax(bin2) + 1
+        fdi = int(a*10+b)
+        if fdi==upper or fdi==lower:
+            cv2.fillPoly(img_show, pts=[points.astype(int)[:, None]], color=(1))
+        
+    return img_show, upper, lower
  
 camera_dict= {
     'z_init':400,
@@ -784,11 +817,3 @@ def parameter_pred(mouth, edgeu, edged, model):
     else:
         dist_lower = 0
     return camera_x, camera_y, camera_z, dist_lower
-
-if __name__=='__main__':
-    image = cv2.imread('/home/meta/sfh/gitee/render/test/45.png')
-    image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    teeth_model = get_yolo('0.0.0.0:8001')
-    tid = get_tid(teeth_model=teeth_model, img=image)
-    cv2.imshow('img', tid.astype(np.uint8))
-    cv2.waitKey(0)

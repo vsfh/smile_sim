@@ -1,8 +1,73 @@
 import cv2
 import numpy as np
-
+import os
+import open3d as o3d
+import copy
+import torch
+from pytorch3d.structures import Meshes, join_meshes_as_scene, join_meshes_as_batch
+from pytorch3d.renderer import (
+    TexturesVertex,
+    TexturesUV
+)
+# from gum_generation.predict_lib import generate_gum
+# from gum.gum_deformation.deformer import DeformDLL
+# from gum_generation.test_half_jaw import get_result
 def sigmoid(x):
-    return np.exp(x) / (1+np.exp(x))
+    return np.exp(x) / (1 + np.exp(x))
+
+
+def numpy_to_img(n_arr):
+    img_array = n_arr[0].transpose(1, 2, 0)
+    img_array = img_array.round() * 255
+    img_array = img_array.astype(np.uint8)
+    img_array = np.squeeze(img_array, axis=2)
+    return img_array
+
+
+def preprocess_mask(img):
+    '''
+
+	:param img: 256*256 numpy array with values in (0,50,100,250)
+	:return: 1*4*256*256 numpy array with values in (0,1)
+	'''
+
+    MASK_COLORMAP = [0, 50, 100, 250]
+    # label_list = ['background', 'mouth', 'edge', 'tooth']
+    n_label = len(MASK_COLORMAP)
+    img = np.array(img, dtype=np.uint8)
+    h, w = img.shape[:2]
+    onehot_label = np.zeros((n_label, h, w))
+    colormap = np.array(MASK_COLORMAP).reshape(n_label, 1, 1)
+    colormap = np.tile(colormap, (1, h, w))
+    for idx, color in enumerate(MASK_COLORMAP):
+        onehot_label[idx] = colormap[idx] == img
+    return onehot_label[np.newaxis, :, :, :].astype(np.float32)
+
+
+def mask_process(im_r, mask, edge):
+    mask[mask != 0] = 255
+    edge[edge != 0] = 255
+    edge = cv2.dilate(edge.astype('uint8'), np.ones((3, 3), np.uint8))
+    mask[im_r == 0] = 0
+    im_r[mask == 255] = 250
+    edge[im_r == 0] = 0
+    im_r[edge == 255] = 100
+    return preprocess_mask(im_r)
+
+
+def complex_imgaug(x, mask):
+    '''
+	Args:
+		x: 256*256*3
+		mask: 256*256*1
+	Returns: 256*256*3
+	'''
+    aug_img = cv2.blur(x, (15, 15), cv2.BORDER_DEFAULT)
+    aug_img = np.where(mask == 0, x, aug_img)
+    aug_img = aug_img.transpose(2, 0, 1)[np.newaxis, :, :, :] / 255. * 2 - 1
+    aug_img = aug_img.astype(np.float32)
+    return aug_img
+
 
 def resize(image, side_length):
     height, width = image.shape[:2]
@@ -75,165 +140,303 @@ def loose_bbox(coords, image_size, loose_coef=0.):
     coords[3] = min(h, int(coords[3]))
     return coords
 
+
 def normalize_img(img):
     if img.dtype not in ['float32']:
         img = img.astype(np.float32)
 
-    if img.max() > 1.:
+    if img.max() > 10.:
         img = img / 255
 
     img = np.transpose(img, (2, 0, 1))
     img = np.expand_dims(img, 0)
     return img
 
-def compute_meta(src_shape, dst_shape, resize_ratio=1., bbox=None, align_mode='center'):
-    src_width, src_height = src_shape
-    dst_width, dst_height = dst_shape
 
-    if bbox is not None:
-        x1, y1, x2, y2 = list(map(int, bbox[:4]))
-    else:
-        x1, y1 = 0, 0
-        x2, y2 = src_width, src_height
+def load_step_file(step_file):
+    step = {int(s[0]): s[1:] for s in step_file}
+    return step
 
-    crop_width, crop_height = x2 - x1, y2 - y1
+def generate_gum_with_deform(teeth_dict, jaw_name):
+    jaw_type = (1, 2) if jaw_name == 'Upper' else (3, 4)
+    result = generate_gum({fdi: tooth for fdi, tooth in teeth_dict.items() if fdi // 10 in jaw_type}, production=True)
 
-    rdst_width, rdst_height = int(dst_width * resize_ratio), int(dst_height * resize_ratio)
-    rw = rdst_width / crop_width
-    rh = rdst_height / crop_height
-    if rw < rh:
-        scale = rw
-        resize_width = rdst_width
-        resize_height = int(crop_height * scale)
-    else:
-        scale = rh
-        resize_height = rdst_height
-        resize_width = int(crop_width * scale)
+    return DeformDLL(result[0], get_result(result)).get_gum()
 
-    if align_mode == 'center':
-        dx = (dst_width - resize_width) // 2
-        dy = (dst_height - resize_height) // 2
-    else:
-        dx = 0
-        dy = 0
+def load_gum(gum_dict, sample=True, voxel_size=0.2, export=False):
+ 
+    upper = gum_dict['Upper']
+    lower = gum_dict['Lower']
+    if export:
+        upper.export(f'export/gum_u.stl')
+        lower.export(f'export/gum_l.stl')
+        
+    
+    vertices = o3d.utility.Vector3dVector(upper.vertices)
+    triangles = o3d.utility.Vector3iVector(upper.faces)
+    upper = o3d.geometry.TriangleMesh(vertices, triangles)
+    vertices = o3d.utility.Vector3dVector(lower.vertices)
+    triangles = o3d.utility.Vector3iVector(lower.faces)
+    lower = o3d.geometry.TriangleMesh(vertices, triangles)
+    
+    mesh_combined = upper + lower
+    if sample:
+        upper = upper.simplify_vertex_clustering(voxel_size=voxel_size)
+        lower = lower.simplify_vertex_clustering(voxel_size=voxel_size)
+        
+    return upper, lower
+    
+def load_teeth(teeth_dict, type='tooth', half=True, sample=True, voxel_size=0.4):
 
-    offsets = (dx, dy, resize_width + dx, resize_height + dy)
-    meta = {
-        'scale': scale,
-        'offsets': offsets,
-        'rect': (x1, y1, x2, y2),
-        'image_size': (src_width, src_height),
-        'resize_shape': (resize_width, resize_height)
-    }
-    return meta
+    teeth = {}
+    for key, tooth in teeth_dict.items():
+        id = int(key)
 
-def yolo_postprocess(outputs, meta, score_thr=0.4, iou_thr=0.4, class_agnostic=False, return_scores=False,
-                        with_deg=False,
-                        mode='xyxy',
-                        ):
-    grid = outputs['output'][0]
-    yolo_xywh = grid[:, :4]
+        vertices = o3d.utility.Vector3dVector(tooth.vertices)
+        triangles = o3d.utility.Vector3iVector(tooth.faces)
+        mesh = o3d.geometry.TriangleMesh(vertices, triangles)
+        
+        mesh.remove_duplicated_vertices()
+        mesh.remove_duplicated_triangles()
 
-    if with_deg:
-        probs = grid[:, 4:5] * grid[:, 5:-2]
-        cosr, sinr = grid[:, -2], grid[:, -1]
-        theta = np.arccos(cosr)
-        theta = np.rad2deg(theta)
-        theta[sinr < 0] = 360- theta[sinr < 0]
+        mesh.compute_triangle_normals()
+        triangle_normals = np.asarray(mesh.triangle_normals)
+        vertices = np.asarray(mesh.vertices)
+        triangles = np.asarray(mesh.triangles)
 
-    else:
-        probs = grid[:, 4:5] * grid[:, 5:]
+        mesh.compute_triangle_normals()
+        if half:
+            vertices_center = (vertices[triangles[:, 0], 1] + vertices[triangles[:, 1], 1] + vertices[
+                triangles[:, 2], 1]) / 3
+            if id // 10 in [1, 3]:
+                mask = (vertices_center <= 0)
+            # mask = (vertices_center <= 0) & (rot_y <= 0)
+            else:
+                mask = (vertices_center >= 0)
+            # mask = (vertices_center >= 0) & (rot_y <= 0)
 
-    labels = np.argmax(probs, axis=1)
-    scores = np.max(probs, axis=1)
-    labels_set = set(labels)
-    num_objs, num_classes = probs.shape[:2]
+            mesh.triangles = o3d.utility.Vector3iVector(
+                triangles[mask]
+            )
+            mesh.triangle_normals = o3d.utility.Vector3dVector(
+                triangle_normals[mask]
+            )
 
-    offsets = meta['offsets']
-    scale = meta['scale']
-    xyxy = np.zeros_like(yolo_xywh)
-    xyxy[:, 0] = yolo_xywh[:, 0] - yolo_xywh[:, 2] / 2
-    xyxy[:, 1] = yolo_xywh[:, 1] - yolo_xywh[:, 3] / 2
-    xyxy[:, 2] = yolo_xywh[:, 0] + yolo_xywh[:, 2] / 2
-    xyxy[:, 3] = yolo_xywh[:, 1] + yolo_xywh[:, 3] / 2
+        if sample:
+            # print(np.asarray(mesh.triangles).shape)
+            mesh = mesh.simplify_vertex_clustering(voxel_size=voxel_size)
+        # print(np.asarray(mesh.triangles).shape)
 
-    # map back
-    xyxy[:, [0, 2]] -= offsets[0]
-    xyxy[:, [1, 3]] -= offsets[1]
-    xyxy /= scale
-    xyxy[:, [0, 2]] += meta['rect'][0]
-    xyxy[:, [1, 3]] += meta['rect'][1]
+        teeth[id] = mesh
+    return teeth
 
-    # remove invalid bbox first
-    width, height = meta['image_size']
-    min_length = 4
-    x1, y1, x2, y2 = xyxy[:, 0], xyxy[:, 1], xyxy[:, 2], xyxy[:, 3]
-    invalid_index = (x1 >= (width - 1 - min_length)) | (y1 >= (height - 1 - min_length)) \
-                    | (x2 <= min_length) | (y2 <= min_length) | \
-                    ((x1 + min_length) >= x2) | ((y1 + min_length) >= y2)
-    scores[invalid_index] = 0.
+color = [
+	[62, 70, 93], [100, 60, 82], [77, 78, 98], [69, 76, 106],
+	[98, 109, 63], [80, 59, 103], [101, 96, 98], [66, 98, 100],
+	[106, 117, 103], [101, 81, 61], [62, 119, 113], [112, 112, 79],
+	[93, 110, 57], [84, 113, 80], [109, 79, 64], [105, 84, 91],
 
-    xywh = xyxy.copy()
-    xywh[:, 2] = xyxy[:, 2] - xyxy[:, 0]
-    xywh[:, 3] = xyxy[:, 3] - xyxy[:, 1]
+	[216, 193, 223], [230, 248, 230], [227, 226, 180], [218, 235, 236],
+	[202, 192, 241], [219, 160, 175], [192, 214, 239], [188, 167, 239],
+	[211, 245, 238], [240, 209, 173], [212, 187, 186], [215, 214, 180],
+	[232, 173, 237], [180, 165, 227], [235, 217, 157], [187, 217, 162]
+]
+up_labels = list(range(11, 19)) + list(range(21, 29))
+down_labels = list(range(31, 39)) + list(range(41, 49))
+colormap = {id: np.array(color[i], dtype=np.float64) / 255 for i, id in enumerate(up_labels + down_labels)}
 
-    if class_agnostic:
-        keep = cv2.dnn.NMSBoxes(xywh, scores, score_thr, iou_thr)
-    else:
-        keep = []
-        number = np.arange(num_objs)
-        for i in range(num_classes):
-            indices = labels == i
-            bboxes = xywh[indices]
-            cur_number = number[indices]
-            cur_scores = scores[indices]
-            cur_keep = cv2.dnn.NMSBoxes(bboxes, cur_scores, score_thr, iou_thr)
-            if len(cur_keep) != 0:
-                keep.extend(cur_number[cur_keep])
+import trimesh
+def trimesh_load_apply(teeth, step):
+    from scipy.spatial.transform import Rotation as R
+    meshes = {}
+    for id in teeth.keys():
+        if id not in teeth:
+            continue
 
-    objs = [[] for _ in range(num_classes)]
-    for k in keep:
-        l = labels[k]
-        s = scores[k:k + 1]
+        mesh = teeth[id]
+        transformation = step[id]
 
-        if mode == 'xyxy':
-            bbox = xyxy[k]
-            bbox = loose_bbox(bbox, meta['image_size'])
+        translate = transformation[:3]
+        quaternions = transformation[3:]
+        quaternions = quaternions[[-1, 0, 1, 2]]
+
+        T = np.eye(4)
+        T[:3, :3] = R.from_quat(quaternions).as_matrix()
+        T[:3, -1] = translate
+        T[-1, -1] = 1
+
+        mesh_t = copy.deepcopy(mesh).apply_transform(T)
+        meshes[id] = mesh_t
+    return meshes
+
+def apply_step_dict(teeth, step):
+    meshes = {}
+    for id in teeth.keys():
+        if id not in teeth:
+            continue
+
+        mesh = teeth[id]
+        mesh.paint_uniform_color(colormap[id])
+        transformation = step[id]
+
+        translate = transformation[:3]
+        quaternions = transformation[3:]
+        quaternions = quaternions[[-1, 0, 1, 2]]
+
+        T = np.eye(4)
+        T[:3, :3] = mesh.get_rotation_matrix_from_quaternion(quaternions)
+        T[:3, -1] = translate
+        T[-1, -1] = 1
+
+        mesh_t = copy.deepcopy(mesh).transform(T)
+        vertices = mesh_t.vertices
+        faces = mesh_t.triangles
+        trimesh_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        meshes[id] = trimesh_mesh
+    return meshes
+
+def apply_step(teeth, step, keys=None, mode='all', add=True, num_teeth=None, export=False):
+    if keys is None:
+        if num_teeth is not None:
+            if num_teeth>=10:
+                keys = {num_teeth}
+            else:
+                up_keys = list(range(11, 11 + num_teeth)) + list(range(21, 21 + num_teeth))
+                down_keys = list(range(31, 31 + num_teeth)) + list(range(41, 41 + num_teeth))
+                if mode == 'up':
+                    keys = up_keys
+                elif mode == 'down':
+                    keys = down_keys
+                else:
+                    keys = up_keys + down_keys
         else:
-            x1, y1, x2, y2 = xyxy[k]
-            cx, cy = (x1 + x2) /2, (y1+y2)/2
-            w, h =x2-x1, y2- y1
-            bbox = np.array([cx, cy, w, h])
+            keys = {11,21}
 
-        if with_deg:
-            angle = theta[k:k+1]
-            bbox = np.concatenate([bbox, angle], axis=0)
+    meshes = []
+    for id in keys:
+        if id not in teeth:
+            continue
+        # if str(id) not in step:
+        #     print('missing step', id)
+        #     continue
+        mesh = teeth[id]
+        mesh.paint_uniform_color(colormap[id])
+        transformation = step[str(id)]
 
-        if return_scores:
-            bbox = np.concatenate([bbox, s], axis=0)
+        # if np.linalg.norm(transformation[:3])>2:
+        #     translate = transformation[:3]
+        #     quaternions = transformation[3:]
+        # else:
+        #     translate = transformation[4:]
+        #     quaternions = transformation[:4]
+        # quaternions = quaternions[[-1, 0, 1, 2]]
 
-        objs[l].append(bbox)
+        # T = np.eye(4)
+        # T[:3, :3] = mesh.get_rotation_matrix_from_quaternion(quaternions)
+        # T[:3, -1] = translate
+        # T[-1, -1] = 1
+        T = np.array(transformation)
 
-    return objs
+        mesh_t = copy.deepcopy(mesh).transform(T)
+        meshes.append(mesh_t)
+        if export:
+            trimesh.Trimesh(vertices=mesh_t.vertices, faces=mesh_t.triangles).export(f'export/{id}.stl')
+    if add:
+        mesh_combined = o3d.geometry.TriangleMesh()
+        for m in meshes:
+            mesh_combined += m
+        return [mesh_combined]
+    else:
+        return meshes
 
-def preprocess_image(image, dst_shape, resize_ratio=1., bbox=None, align_mode='center', pad_val=0, interpolation=None,
-                     keep=False):
-    height, width = image.shape[:2]
-    if isinstance(dst_shape, int):
-        dst_shape = (dst_shape, dst_shape)
 
-    meta = compute_meta((width, height), dst_shape, resize_ratio, bbox, align_mode, keep=keep)
-    resize_shape = meta['resize_shape']
-    x1, y1, x2, y2 = meta['rect']
-    dleft, dtop, dright, dbottom = meta['offsets']
+def meshes_to_tensor(meshes, device='cpu'):
+    if not isinstance(meshes, list):
+        meshes = [meshes]
 
-    image = image[y1:y2, x1:x2]
-    image = cv2.resize(image, resize_shape, interpolation=interpolation)
-    if len(image.shape) != 3:
-        image = image[..., None]
+    verts = []
+    faces = []
+    tensors = []
+    for m in meshes:
+        v = torch.tensor(np.asarray(m.vertices), dtype=torch.float32, device=device)
+        verts.append(v)
 
-    dst_width, dst_height = dst_shape
-    image = np.pad(image, ((dtop, dst_height - dbottom), (dleft, dst_width - dright), (0, 0)), mode='constant',
-                   constant_values=pad_val)
+        f = torch.tensor(np.asarray(m.triangles), dtype=torch.long, device=device)
+        faces.append(f)
+        
+        tensors.append(Meshes(
+            verts=[v],
+            faces=[f],
+            textures=TexturesVertex(verts_features=torch.full([1, v.shape[0], 3], 1.8, device=device))
+        ))
 
-    return image, meta
+    verts_rgb = torch.tensor(np.asarray(meshes[0].vertex_colors), dtype=torch.float32)  # (1, V, 3)
+    # mesh_tensor = Meshes(
+    #     verts=verts,
+    #     faces=faces,
+    #     # textures=textures
+    # )
+    mesh_tensor = join_meshes_as_scene(tensors, include_textures=True)
+    # mesh_tensor.textures = TexturesVertex(verts_features=torch.full([len(verts), mesh_tensor._V, 3], 0., device=device))
+    return mesh_tensor
+
+
+def get_step_array(case_dir='/home/meta/sfh/gitee_done/OnnxConvert/test_images/C01004890078'):
+    info_dir = os.path.join(case_dir, 'info')
+    teeth = load_teeth(info_dir, type='tooth', half=True, sample=True, voxel_size=1.0)
+    step_files = [f for f in os.listdir(info_dir) if 'step' in f and 'txt' in f]
+    step_files = sorted(step_files, key=lambda f: int(f.split('.')[0][4:]))
+    mesh_array = []
+    idx_array = []
+    for file in step_files:
+        step1_file = os.path.join(info_dir, file)
+        step1 = load_step_file(step1_file)
+        up_mesh = apply_step(teeth, step1, mode='up', num_teeth=5, add=True)
+        up_verts, up_faces = meshes_to_tensor(up_mesh)
+        down_mesh = apply_step(teeth, step1, mode='down', num_teeth=5, add=True)
+        down_verts, down_faces = meshes_to_tensor(down_mesh)
+        mesh_array.append(np.concatenate([up_verts, up_faces, down_verts, down_faces], axis=1))
+        idx_array.append([up_verts.shape[1], up_faces.shape[1], down_verts.shape[1], down_faces.shape[1]])
+    mesh_array = np.concatenate(mesh_array, axis=1)
+    idx_array = np.array(idx_array)
+    return mesh_array[0], idx_array
+
+def deepmap_to_edgemap(teeth_rgb, mouth_mask, mid):
+    teeth_gray = teeth_rgb * mouth_mask
+    teeth_gray = teeth_gray.astype(np.uint8)
+
+    # max_value = teeth_gray.max()
+    # teeth_gray[teeth_gray==max_value] = 0
+
+    # max_value = teeth_gray.max()
+    # teeth_gray[teeth_gray==max_value] = 0
+    
+    color = set(teeth_gray.flatten())
+    for c in color:
+        mask = teeth_gray == c
+
+        if np.sum(mask) < 20:
+            teeth_gray[mask] = 0.
+            continue
+
+    up_teeth = teeth_gray * (teeth_gray <= mid)
+    down_teeth = teeth_gray * (teeth_gray > mid)
+
+    kernelx = np.array([[1, -1], [0, 0]])
+    kernely = np.array([[1, 0], [-1, 0]])
+
+    gradx = cv2.filter2D(up_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(up_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    up_edge = (grad > 0).astype(np.uint8) * 255
+
+    gradx = cv2.filter2D(down_teeth, cv2.CV_32F, kernelx)
+    grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
+    grad = np.abs(gradx) + np.abs(grady)
+    down_edge = (grad > 0).astype(np.uint8) * 255
+
+    return up_edge, down_edge
+
+
+if __name__ == '__main__':
+    get_step_array()
