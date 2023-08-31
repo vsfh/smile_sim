@@ -184,7 +184,7 @@ def smooth_line(line, sample_num, w=None, s=None, k=3, is_closed=False):
     return pts
 
 
-def extract_shapes_from_mask(mask, num=1, smooth=True, min_point_number=40, kernel_size=None):
+def extract_shapes_from_mask(mask, num=1, smooth=False, min_point_number=40, kernel_size=None):
     from scipy.interpolate import splrep, splev, splprep
     from scipy import interpolate
 

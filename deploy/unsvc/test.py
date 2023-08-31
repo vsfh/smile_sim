@@ -52,5 +52,3 @@ teeth_mesh = join_meshes_as_scene([up_tensor, down_tensor],
 # deepmap, depth = edge_renderer(meshes_world=teeth_mesh, R=R, T=T)
 out_im = edge_renderer(meshes_world=teeth_mesh, R=Rot, T=T)
 
-cv2.imshow('img', (255/(out_im[0,:,:,:3].max())*out_im[0,:,:,:3]*out_im[0,:,:,3][...,None]).detach().cpu().numpy().astype(np.uint8))
-cv2.waitKey(0)

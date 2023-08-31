@@ -223,7 +223,7 @@ class CVModel(BaseModel):
                          class_names=None,
                          loose_factor=0.,
                          magic_str='',  # only used for temporary compatibility, will be removed later
-                         smooth=True,
+                         smooth=False,
                          return_mask=False,
                          ):
         # for compatibility, will be removed later
@@ -404,8 +404,6 @@ class CVModel(BaseModel):
                 cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 1)
                 cv2.putText(img, str(k), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1., (0, 0, 255))
 
-        cv2.imshow('img', img[..., ::-1])
-        cv2.waitKey()
 
     # keypoints
     @staticmethod
@@ -498,8 +496,6 @@ class CVModel(BaseModel):
                 cv2.putText(img, str(count), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
                 count += 1
 
-        cv2.imshow('img', img[..., ::-1])
-        cv2.waitKey()
         return
 
     # seg
@@ -519,8 +515,7 @@ class CVModel(BaseModel):
 
     def seg_vis(self, img, result):
         mask = result
-        cv2.imshow('mask', mask * 10)
-        cv2.waitKey()
+
 
     # instance
     @staticmethod
@@ -634,10 +629,6 @@ class CVModel(BaseModel):
                 cv2.drawContours(vis, [pts], -1, (0, 0, 255), 1)
 
                 cv2.putText(vis, str(k), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 1., (0, 0, 255))
-                # x1, y1, w, h = info['xywh']
-                # cv2.rectangle(vis, (x1, y1), (x1+w, y1+h), (0, 255, 0), 1)
-        cv2.imshow('img', vis[..., ::-1])
-        cv2.waitKey()
 
 
 class YoloModel(CVModel):
@@ -669,8 +660,7 @@ class InstanceModel(CVModel):
     def init_post_params(self):
         self.post_params = {'instance': {}}
         
-def get_yolo(model_root):
-    backend = 'web'
+def get_yolo_tid(model_root,backend = 'web'):
     teeth_model = YoloModel(model_root, 'new_smile_tid', (256, 256),
                             backend=backend, pad_val=114,
                             output_map={
@@ -723,7 +713,6 @@ def get_tid(teeth_model, img):
         fdi = int(a*10+b)
         if fdi==upper or fdi==lower:
             cv2.fillPoly(img_show, pts=[points.astype(int)[:, None]], color=(1))
-        
     return img_show, upper, lower
  
 camera_dict= {

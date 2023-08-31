@@ -376,9 +376,11 @@ def meshes_to_tensor(meshes, device='cpu'):
     #     faces=faces,
     #     # textures=textures
     # )
-    mesh_tensor = join_meshes_as_scene(tensors, include_textures=True)
-    # mesh_tensor.textures = TexturesVertex(verts_features=torch.full([len(verts), mesh_tensor._V, 3], 0., device=device))
-    return mesh_tensor
+    if len(tensors)==1:
+        return tensors[0]
+    else:
+        mesh_tensor = join_meshes_as_scene(tensors, include_textures=True)
+        return mesh_tensor
 
 
 def get_step_array(case_dir='/home/meta/sfh/gitee_done/OnnxConvert/test_images/C01004890078'):

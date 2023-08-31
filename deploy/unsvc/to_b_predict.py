@@ -12,22 +12,36 @@ from natsort import natsorted
 import trimesh
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
-import imageio
+from tqdm import tqdm
 # rendering components
 from pytorch3d.renderer import (
 	RasterizationSettings, MeshRenderer, MeshRasterizer, BlendParams,
 	PerspectiveCameras, SoftPhongShader,HardPhongShader, TexturesVertex, PointLights,SoftSilhouetteShader
 )
-from tritoninferencer import TritonInferencer
+import onnxruntime
+from tid_models import get_tid, get_yolo_tid
 
-# tinf = TritonInferencer("zh-triton.zh-ml-backend.svc:8001")
-tinf = TritonInferencer("127.0.0.1:8001")
-
-
+onnx_opt_dict = {
+    'smile_sim_lip_preserve-yolov5':{'input':['images'],'output':['output'],'path':'/mnt/d/triton/backup_model/smile_sim_lip_preserve-yolov5/1'},
+    'smile_sim_lip_preserve-edge_net':{'input':['data'],'output':['output'],'path':'/mnt/d/triton/backup_model/smile_sim_lip_preserve-edge_net/1'},
+    'cls-ensemble':{'input':['images'],'output':['output'],'path':'/mnt/d/triton/backup_model/cls-yolov5s/1'},
+    'new_smile_wo_edge_gan':{'input':['input_image','mask'],'output':['align_img'],'path':'/mnt/d/triton/backup_model/new_smile_wo_edge_gan/1'},
+}
+onnx_sess_dict = {}
+for k,v in onnx_opt_dict.items():
+    onnx_sess_dict[k] = onnxruntime.InferenceSession(os.path.join(v['path'],'model.onnx'),providers=['CUDAExecutionProvider','CPUExecutionProvider'])
+    
+def onnx_infer(data, sess_name):
+    input = {name: data[i] for i,name in enumerate(onnx_opt_dict[sess_name]['input'])}
+    output_names = onnx_opt_dict[sess_name]['output']
+    if len(output_names)==1:
+        output = onnx_sess_dict[sess_name].run([], input)[0]
+        return output
+    else:
+        print('error', sess_name)
 
 def _seg_tid(image):
-    from tid_models import get_tid, get_yolo
-    teeth_model = get_yolo(tinf)
+    teeth_model = get_yolo_tid('/mnt/d/triton/backup_model', backend='native')
     tid = get_tid(teeth_model=teeth_model, img=image)
 
     return tid
@@ -39,9 +53,8 @@ def _find_objs(image):
     offsets = meta['offsets']
     scale = meta['scale']
     input_imgs = utils.normalize_img(resized_image)
-    output = tinf.infer_sync('smile_sim_lip_preserve-yolov5',
-                       {'images': input_imgs}, ['output'])
-    output = output['output'][0]
+    output = onnx_infer([input_imgs],'smile_sim_lip_preserve-yolov5', )
+    output = output[0]
     xywh = output[:, :4]
     probs = output[:, 4:5] * output[:, 5:]
 
@@ -72,9 +85,8 @@ def _seg_mouth(image):
     seg_input_shape = (256, 256)
     resized_image, _ = utils.resize_and_pad(image, seg_input_shape)
     input_imgs = utils.normalize_img(resized_image)
-    output = tinf.infer_sync('smile_sim_lip_preserve-edge_net',
-                       {'data': input_imgs}, ['output'])
-    output = np.transpose(output['output'][0], (1, 2, 0))
+    output = onnx_infer([input_imgs], 'smile_sim_lip_preserve-edge_net')
+    output = np.transpose(output[0], (1, 2, 0))
     output = utils.sigmoid(output)
     return output
 
@@ -84,9 +96,6 @@ def apply_style(img, mean, std, mask=None, depth=None):
     if mask.shape[2] == 3:
         mask = mask[..., :1]
     mask = mask.astype(np.uint8)
-
-    # img_depth = img.astype(np.float32) * (depth[..., None] * 0.6 + 0.4)
-    # img_depth = img_depth.astype(np.uint8)
 
     img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB).astype("float32")
 
@@ -143,12 +152,6 @@ def detection_and_segmentation(face_img):
     up_edge = (seg_result[..., 3] > 0.6).astype(np.float32)
     
     heatmap = tid
-    # heatmap_15 = cv2.dilate(heatmap, kernel=np.ones((15, 15)))*0.1
-    # heatmap_30 = cv2.dilate(heatmap, kernel=np.ones((30, 30)))*0.01
-    
-    # heatmap = np.where(heatmap == 0, heatmap_15, heatmap)
-    # heatmap = np.where(heatmap == 0, heatmap_30, heatmap)
-    # heatmap = np.repeat(heatmap[:, :, np.newaxis], 3, axis=2)
     
     contours, _ = cv2.findContours(mouth_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -316,7 +319,10 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
     ref = -ref_y * np.sin(np.deg2rad(10)) + ref_z * np.cos(np.deg2rad(10))
 
     index = np.argwhere(np.max(up_mask[:, 100:150], axis=1) > 0)
-    mouth_mid = np.max(index)
+    if len(index)==0:
+        mouth_mid = 128
+    else:
+        mouth_mid = np.max(index)
 
     focal_length = 13
     init_z = 475
@@ -362,16 +368,16 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
     min_loss = np.Inf
     gif_images = []
     start = time.time()
-    for i in range(200):
+    for i in range(100):
         optimizer.zero_grad()
         loss, teeth_mask, R, T, dist = model()
         
-        if i % 10 == 0:
-            teeth_mask = teeth_mask.detach().cpu().numpy()
-            diff = np.zeros((256, 256, 3), dtype=np.float32)
-            diff[..., 0] = teeth_mask
-            diff[..., 1] = image_ref
-            gif_images.append((diff * 255).astype(np.uint8))
+        # if i % 10 == 0:
+        #     teeth_mask = teeth_mask.detach().cpu().numpy()
+        #     diff = np.zeros((256, 256, 3), dtype=np.float32)
+        #     diff[..., 0] = teeth_mask
+        #     diff[..., 1] = image_ref
+        #     gif_images.append((diff * 255).astype(np.uint8))
         
         if loss.item() < min_loss:
             best_opts = {
@@ -385,7 +391,7 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
 
         loss.backward()
         optimizer.step()
-    imageio.mimsave('optimization.gif', gif_images, duration=100)
+    # imageio.mimsave('optimization.gif', gif_images, duration=100)
 
     opt_cameras = PerspectiveCameras(device=device, focal_length=best_opts['focal_length'])
     lights = PointLights(device=device, ambient_color=((0.9, 0.9, 0.9),), location=[[2.0, -60.0, -12.0]])
@@ -436,11 +442,10 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
         # id_dict[step_idx] = down_edge
     return edge_dict, depth_dict, id_dict, gif_images
 
-def _gan(input_dict, network_name, tinf):
-    input_dict = {k: utils.normalize_img(v) for k, v in input_dict.items()}
-    output = tinf.infer_sync(network_name, input_dict, ['align_img'])
-    output = output['align_img'][0].transpose(1, 2, 0)
-    
+def _gan(inputs, network_name, tinf=None):
+    output = onnx_infer(inputs, network_name, )
+    output = output[0].transpose(1, 2, 0)
+    output = (output + 1.0) / 2.0
     return output
 
 def smile_generation_based_on_edge(seg_res, edge_list, depth_dict, id_dict):
@@ -487,9 +492,8 @@ def smile_generation_based_on_edge(seg_res, edge_list, depth_dict, id_dict):
         tmask = tmask[...,None].repeat(3,2)
 
         cond = edge*mask*0.1 + up_edge*mask*0.5 + tmask*mask*(1-edge) + mouth_img*(1-mask)
-        input_dict = {'cond': cond}
         network_name = 'smile_sim_lip_preserve-up_net'
-        aligned_mouth = _gan(input_dict, network_name, tinf)
+        aligned_mouth = _gan([utils.normalize_img(cond)], network_name, )
         aligned_mouth = aligned_mouth.clip(0,1)*255
         aligned_mouth = aligned_mouth.astype(np.uint8)
         
@@ -516,11 +520,10 @@ class predictor(object):
         edge_dict, depth_dict, id_dict, gif_images = fitting(seg_res, tooth_dict, step_list, device='cuda')
         a = depth_dict['step_0']
         b = seg_res['mouth_img'][...,::-1]
-        c = seg_res['mouth_mask'].astype(np.bool_)
-        d = blend_images(a,b,0.8)
-        cv2.imshow('img', d)
-        cv2.waitKey(0)
-        return
+        c = seg_res['mouth_mask']
+        d = blend_images(a,b,0.7)
+
+        return a,b,c,d
         smile_img_list = smile_generation_based_on_edge(seg_res, edge_dict, depth_dict, id_dict)
         torch.cuda.empty_cache()
         return smile_img_list, edge_dict
@@ -534,33 +537,41 @@ def visualize_teeth(face_img, tooth_dict, step_list):
     up_mesh = utils.trimesh_load_apply(tooth_dict, step1)
     up_mesh[11].show()
 
-    
 def test():
     smile = predictor()
-    path = '/mnt/e/data/smile/to_b/20220713_SmileyTest_200case'
-    for case in os.listdir(path):
-        case = '0b01e19ba8f3daa5aed0653dd253a78e'
+    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
+    for case in tqdm(os.listdir(path)):
+        # case = 'C01002721541'
+        # case = '0b01e19ba8f3daa5aed0653dd253a78e'
         img_folder = os.path.join(path,case)
-        face_img = np.array(Image.open(os.path.join(img_folder, 'smiley.jpg')))
-        tooth_dict = {int(os.path.basename(p).split('.')[0][-2:]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'info', 'tooth*.stl'))}
+        if not os.path.exists(os.path.join(img_folder, '微笑像.jpg')) or os.path.exists(os.path.join(img_folder, 'modal', 'blend.png')):
+            continue
+        try:
+            face_img = np.array(Image.open(os.path.join(img_folder, '微笑像.jpg')))
+        except:
+            print('img', case)
+        tooth_dict = {int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'models', '*._Root.stl'))}
         steps_dict = {}
         step_one_dict = {}
         
-        step_list = natsorted(glob.glob(img_folder+'/info/*.txt'))
-        print(step_list[0])
+        step_list = natsorted(glob.glob(img_folder+'/models/*.txt'))
         for arr in np.loadtxt(step_list[0]):
             trans = np.eye(4,4)
-            trans[:3,3] = arr[-3:]
-            trans[:3,:3] = R.from_quat(arr[1:5]).as_matrix()
+            trans[:3,3] = arr[1:4]
+            trans[:3,:3] = R.from_quat(arr[-4:]).as_matrix()
             step_one_dict[str(int(arr[0]))] = trans
-            
-            
         steps_dict['step_0'] = step_one_dict
-        # steps_dict['step_1'] = np.loadtxt(step_list[-1])
-        smile_img_list, edge_dict = smile.predict(face_img, tooth_dict, steps_dict)
-        img = smile_img_list['step_0']
-        dst_dir = os.path.join(img_folder,'sfhRes')
-        os.makedirs(dst_dir, exist_ok=True)
+        try:
+            a,b,c,d = smile.predict(face_img, tooth_dict, steps_dict)
+            save_path = os.path.join(img_folder, 'modal')
+            os.makedirs(save_path, exist_ok=True)
+            cv2.imwrite(os.path.join(save_path, 'teeth_3d.png'), a)
+            cv2.imwrite(os.path.join(save_path, 'mouth.png'), b)
+            cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
+            cv2.imwrite(os.path.join(save_path, 'blend.png'), d)
+        except:
+            print(case)
+
         
 if __name__=="__main__":
     test()    
