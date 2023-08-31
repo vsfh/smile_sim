@@ -20,13 +20,12 @@ def flip(x, dim):
 
 class YangOldNew(Dataset):
     def __init__(self, mode='decoder'):
-        self.path = '/data/shenfeihong/smile/Merged/Teeth'
+        self.path = '/mnt/d/data/smile/Teeth_simulation_10K'
         self.all_files = []
         
-        with open('/home/gregory/data/yangNew.txt','r') as f_new:
-            self.all_files += [f.strip() for f in f_new.readlines()]
-        with open('/home/gregory/data/yangOld.txt','r') as f_old:
-            self.all_files += [f.strip() for f in f_old.readlines()]
+        for folder in os.listdir(self.path):
+            if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
+                self.all_files.append(os.path.join(self.path, folder, 'modal'))
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
@@ -36,25 +35,15 @@ class YangOldNew(Dataset):
     
     def __getitem__(self, index):
         img_folder = self.all_files[index]
-        img = cv2.imread(os.path.join(self.path, img_folder, 'Img.jpg'))
-        mask = cv2.imread(os.path.join(self.path, img_folder, 'MouthMask.png'))
-        edge = cv2.imread(os.path.join(self.path, img_folder, 'TeethEdge.png'))
-        up_edge = cv2.imread(os.path.join(self.path, img_folder, 'TeethEdgeUp.png'))
-        
-        tmask = cv2.imread(os.path.join(self.path, img_folder, 'TeethMasks.png'))
-        
-        # tmask = cv2.erode(tmask, kernel=np.ones((3, 3)))
-        # edge = cv2.erode(edge, kernel=np.ones((3, 3)))
-        # up_edge = cv2.erode(up_edge, kernel=np.ones((3, 3)))
+        img = cv2.imread(os.path.join(img_folder, 'mouth.png'))
+        mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
+        teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
         
         im = self.preprocess(img)
         mk = self.preprocess(mask)
-        ed = self.preprocess(edge)
-        up = self.preprocess(up_edge)
+        teeth_3d = self.preprocess(teeth_3d)
         
-        tk = self.preprocess(tmask)
-        
-        cond = 0.1*ed*mk+0.5*up*mk+(1-mk)*im+(1-ed)*tk
+        cond = teeth_3d*mk+im*(1-mk)
         
         return {'images': im, 'cond':cond}
         
@@ -67,6 +56,7 @@ class YangOldNew(Dataset):
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
+
 
 from os.path import join as opj
 class Tianshi(Dataset):

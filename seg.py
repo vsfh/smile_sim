@@ -19,8 +19,7 @@ def label_check():
         label_path = os.path.join(mask_path, 'C01002721732_smile.jpg')
         label = cv2.imread(label_path).astype(bool)
         img[label] = 255
-        cv2.imshow('check', img)
-        cv2.waitKey(0)
+
 
 
 def sigmoid(x):
@@ -188,8 +187,6 @@ def upper_gums():
             upper_gum += inner_[0][0] - teeth_[0][0]
             lower_gum += teeth_[0][-1] - inner_[0][-1]
 
-        cv2.imshow('inner', part_face)
-        cv2.waitKey(0)
 
 def batch_seg(path):
     from test import Yolo, Segmentation, sigmoid

@@ -87,8 +87,6 @@ class EdgeShader(nn.Module):
         new_depth = 1 - (depth - min_depth) / (max_depth - min_depth)
         new_depth[depth == bg_value] = 0
 
-        # cv2.imshow('depth', new_depth.cpu().numpy())
-        # cv2.waitKey()
 
         bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
         zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
@@ -291,9 +289,7 @@ def deepmap_to_edgemap_(teeth_gray, mouth_mask, mid, show=False):
     grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
     grad = np.abs(gradx) + np.abs(grady)
     down_edge = (grad > 0).astype(np.uint8) * 255
-    if show:
-        cv2.imshow('img1', up_edge + down_edge)
-        cv2.waitKey(0)
+
     return up_edge, down_edge, up_edge + down_edge
 
 
@@ -346,10 +342,7 @@ def deepmap_to_edgemap(teeth_gray, mid, mask, show=False):
     grady = cv2.filter2D(down_teeth, cv2.CV_32F, kernely)
     grad = np.abs(gradx) + np.abs(grady)
     down_edge = (grad > 0).astype(np.uint8) * 255
-    if show:
-        cv2.imshow('img1', up_edge + down_edge)
-        # cv2.imshow('img', mouth_mask)
-        cv2.waitKey(0)
+
     return up_edge, down_edge, up_edge + down_edge
 
 def render_init():

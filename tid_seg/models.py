@@ -397,8 +397,6 @@ class CVModel(BaseModel):
                 cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 1)
                 cv2.putText(img, str(k), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1., (0, 0, 255))
 
-        cv2.imshow('img', img[..., ::-1])
-        cv2.waitKey()
 
     # keypoints
     @staticmethod
@@ -491,8 +489,7 @@ class CVModel(BaseModel):
                 cv2.putText(img, str(count), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
                 count += 1
 
-        cv2.imshow('img', img[..., ::-1])
-        cv2.waitKey()
+
         return
 
     # seg
@@ -512,8 +509,6 @@ class CVModel(BaseModel):
 
     def seg_vis(self, img, result):
         mask = result
-        cv2.imshow('mask', mask * 10)
-        cv2.waitKey()
 
     # instance
     @staticmethod
@@ -627,10 +622,7 @@ class CVModel(BaseModel):
                 cv2.drawContours(vis, [pts], -1, (0, 0, 255), 1)
 
                 cv2.putText(vis, str(k), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 1., (0, 0, 255))
-                # x1, y1, w, h = info['xywh']
-                # cv2.rectangle(vis, (x1, y1), (x1+w, y1+h), (0, 255, 0), 1)
-        cv2.imshow('img', vis[..., ::-1])
-        cv2.waitKey()
+
 
 
 class YoloModel(CVModel):
@@ -844,5 +836,3 @@ if __name__=='__main__':
     image = np.array(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     teeth_model = get_yolo('0.0.0.0:8001')
     tid = get_tid(teeth_model=teeth_model, img=image)
-    cv2.imshow('img', tid.astype(np.uint8))
-    cv2.waitKey(0)

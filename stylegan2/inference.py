@@ -63,8 +63,7 @@ def train(loader, generator, discriminator, g_ema, device):
                 grid = make_grid(torch.cat([sample, real_img, input_semantic[:, :3], input_semantic[:, -3:]], dim=0),
                                  nrow=4, normalize=True, range=(-1, 1))
                 ndarr = grid.mul(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy()
-                cv2.imshow('gt', ndarr[..., ::-1])
-                cv2.waitKey()
+
 
 
 from PIL import Image
@@ -115,24 +114,6 @@ def inference(generator, case_dir, device='cuda', latent=512, mixing=0., num_loo
         semantic[3] = up_teeth
         semantic[4] = down_teeth
 
-        # for i, o in enumerate(semantic):
-        #     print(i, o.min(), o.max())
-        #     cv2.imshow(str(i), o)
-        # cv2.waitKey()
-
-        # cv2.imshow('teeth', teeth_mask)
-        # cv2.imshow('edge', edge)
-        # cv2.imshow('up', up_teeth)
-        # cv2.imshow('down', down_teeth)
-        #
-        cv2.imshow('mouth', mouth[..., ::-1])
-        # cv2.imshow('trans', transition)
-
-        # for i, o in enumerate( semantic):
-        #     cv2.imshow(str(i), o)
-        #     print(o.max(), o.min())
-
-        # cv2.waitKey()
         teeth = img*mask
         with torch.no_grad():
 
@@ -161,8 +142,7 @@ def inference(generator, case_dir, device='cuda', latent=512, mixing=0., num_loo
 
                 sample = sample.cpu().numpy()[0]
                 sample = (sample + 1) / 2
-                cv2.imshow('sample', sample.transpose(1,2,0)[..., ::-1])
-                cv2.waitKey()
+
 
         # real_img = real_img.to(device)
 

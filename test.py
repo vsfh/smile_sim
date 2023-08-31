@@ -63,9 +63,6 @@ class Yolo(BaseModel):
                 x1, y1, x2, y2 = coords
                 cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
 
-        if show:
-            cv2.imshow('det', image[..., ::-1])
-            cv2.waitKey()
 
         objs = np.array(objs, dtype=np.int)
         return objs
@@ -85,8 +82,7 @@ class Segmentation(BaseModel):
         if show:
             for i in range(num_channels):
                 print(output[..., i].max())
-                cv2.imshow('o', output[..., i])
-                cv2.waitKey()
+
 
         return output
 

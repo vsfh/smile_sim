@@ -101,8 +101,7 @@ def preprocess_image(image, side_length, resize_ratio=1., roi=None):
         x1, y1 = 0, 0
         image = new_image
 
-    # cv2.imshow('roi', image)
-    # cv2.waitKey()
+
     image, meta = resize_and_pad(image, side_length, resize_ratio=resize_ratio)
 
     return image, (*meta, (x1, y1))

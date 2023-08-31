@@ -239,15 +239,3 @@ if __name__ == '__main__':
         assert images.shape[1]==images.shape[2], 'error'
         assert mask.shape[1]==mask.shape[2], 'mask error'
 
-        # print(set(input_semantic.flatten()))
-        # print(set(batch['mask'].flatten()))
-
-        # print(input_semantic.shape)
-        # for i, o in enumerate(input_semantic):
-        #     cv2.imshow(str(i), o)
-        #     print(i, o.min(), o.max())
-        # # cv2.imshow('tmp', input_semantic[:3].transpose(1,2,0))
-        cv2.imshow('img', a.astype(np.uint8))
-        cv2.waitKey(0)
-
-

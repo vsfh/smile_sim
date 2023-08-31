@@ -5,7 +5,7 @@ from stylegan2.dataset import *
 from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
-from test import Yolo, Segmentation, sigmoid
+# from test import Yolo, Segmentation, sigmoid
 from utils import loose_bbox
 
 def noise():
@@ -143,6 +143,20 @@ def find_case():
         img_path = os.path.join(path, folder, 'smiley.jpg')
         img = cv2.imread(img_path)
         cv2.imwrite(f'./example/ll/{folder}.jpg', img)
+        
+def copy_file():
+    path = '/mnt/d/data/smile/Teeth_simulation_10K'
+    for folder in os.listdir(path)[:4000]:
+        if os.path.exists(os.path.join(path, folder, 'modal', 'blend.png')):
+            im = cv2.imread(os.path.join(path, folder, 'modal','mouth.png'))
+            mk = cv2.imread(os.path.join(path, folder, 'modal','mouth_mask.png'))
+            teeth = cv2.imread(os.path.join(path, folder, 'modal','teeth_3d.png'))
+            os.makedirs(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder), exist_ok=True)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'mouth.png'), im)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'mouth_mask.png'), mk)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'teeth_3d.png'), teeth)
+            
+            
 if __name__ == "__main__":
-    find_case()
+    copy_file()
     a = 1

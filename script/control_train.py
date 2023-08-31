@@ -2,6 +2,9 @@ import argparse
 import math
 import random
 import os
+import sys
+sys.path.append('.')
+sys.path.append('..')
 
 import numpy as np
 import torch
@@ -527,7 +530,7 @@ if __name__ == "__main__":
 
         args.latent = 512
         args.n_mlp = 8
-        args.weight_dir = '/data/shenfeihong/share/weight/smile/2023.6.25'
+        args.weight_dir = '/mnt/d/data/smile/weight'
         args.start_iter = 0
         args.project = True
         return args

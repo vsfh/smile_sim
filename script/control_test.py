@@ -32,8 +32,6 @@ def apply_style(img, mean, std, mask=None, depth=None):
     img_lab = (img_lab - src_mean.squeeze()) / src_std.squeeze() * std.squeeze() + mean.squeeze()
     img_lab = np.clip(img_lab, 0, 255).astype(np.uint8)
 
-    # depth = cv2.blur(depth, (13,13))
-    # cv2.imshow('depth', depth)
     img_rgb = cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
     img_rgb = img_rgb.astype(np.float32)
     # * (depth[...,None] * 0.3 + 0.7)* (depth[...,None] * 0.3 + 0.7)
@@ -80,16 +78,6 @@ def get_cond(path):
     
     tmask = tmask[...,None].repeat(3,2)
     
-    # mask = mask/255
-    # edge = edge/255
-    # up_edge = up_edge/255
-    # down_edge = down_edge/255
-    # tmask = tmask/255
-    # img = img/255
-    # cond = mask*down_edge*0.1 + mask*up_edge*0.5 + (1-mask)*img + (1-edge)*tmask
-    # cv2.imshow('img', tmask)
-    # cv2.waitKey(0)
-    
     im = preprocess(img)
     mk = preprocess(mask)
     up = preprocess(up_edge)
@@ -118,19 +106,7 @@ def get_cond_x():
     mask = cv2.imread(os.path.join(path, 'MouthMask.png'))
     edge = cv2.imread(os.path.join(path, 'TeethEdge.png'))
     tmask = cv2.imread(os.path.join(path, 'TeethMasks.png'))
-    
-    # tmask[tmask==tmask.max()] = 0
-    # tmask[tmask>0] = 255
-    # tmask[mask==0] = 0
-    # edge = cv2.dilate(edge, kernel=np.ones((3,3))).sum(-1).clip(0,255)[...,None].repeat(3,2)
-    
-    # mask = mask/255
-    # edge = edge/255
-    # tmask = tmask/255
-    # img = img/255
-    # cond = mask*edge*0.1 + (1-mask)*img + (1-edge)*tmask
-    # cv2.imshow('img', cond)
-    # cv2.waitKey(0)
+
     
     im = preprocess(img)
     mk = preprocess(mask)
@@ -202,8 +178,6 @@ def test_onnx():
         apply_mask = apply_mask
         sample = apply_style(sample, target_mean, target_std, apply_mask*mk[0][0], depth)
         cv2.imwrite(os.path.join(img_folder,'paper_ex','smile2.jpg'), sample[...,::-1])
-        # cv2.imshow('img', sample[...,::-1])
-        # cv2.waitKey(0)
         break
 def onnx_export():
     dynamic_axes = {
@@ -221,19 +195,5 @@ def onnx_export():
     torch.onnx.export(model, (input1), 'model2.onnx', export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=16, dynamic_axes=dynamic_axes)
 if __name__=='__main__':
-    # path = '/mnt/share/shenfeihong/data/smile_to_b_test/x'
-    # ed = cv2.imread('example/1.4.tianshi/598236/edge.png')
-    # down = cv2.imread('example/1.4.tianshi/598236/down_edge.png')
-    # up = cv2.imread('example/1.4.tianshi/598236/up_edge.png')
-    
-    # cv2.imshow('img', ed-up)
-    # cv2.waitKey(0)
-    # edge = cv2.imread(os.path.join(path, 'steps', 'step_025.png'))
-    # tmask = cv2.imread(os.path.join(path, 'steps', 'mask_step_025.png'))
-    # tmask[tmask==tmask.max()] = 0
-    # tmask[tmask>0] = 255
-    # # tmask[mask==0] = 0
-    # cv2.imwrite('img.jpg', tmask)
-    # a,b = get_cond()
-    # onnx_export()
+
     test_onnx()
