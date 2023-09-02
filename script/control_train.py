@@ -127,14 +127,12 @@ def set_grad_none(model, targets):
 
 def train_control(args, loader, discriminator, device):
     from control_gan import ControlModel
-    path = '/mnt/share/shenfeihong/weight/smile-sim/2023.5.26/090000.pt'
-    ckpt = torch.load(path, map_location=lambda storage, loc: storage)
-    discriminator.load_state_dict(ckpt['d'])
+    # path = '/mnt/share/shenfeihong/weight/smile-sim/2023.5.26/090000.pt'
+    # ckpt = torch.load(path, map_location=lambda storage, loc: storage)
+    # discriminator.load_state_dict(ckpt['d'])
     args.train_gan = False
     args.lr = 1e-5
-    model = ControlModel(args.size, args.latent, 
-            path, 
-            args.n_mlp,).to(device)
+    model = ControlModel(args.size, args.latent, args.n_mlp,).to(device)
     params = list(model.control_net.parameters())
     if args.train_gan:
         params += list(model.generator.parameters())
@@ -530,7 +528,7 @@ if __name__ == "__main__":
 
         args.latent = 512
         args.n_mlp = 8
-        args.weight_dir = '/mnt/d/data/smile/weight'
+        args.weight_dir = '/ssd/gregory/smile/style_weight/'
         args.start_iter = 0
         args.project = True
         return args
@@ -603,7 +601,7 @@ if __name__ == "__main__":
         )
 
 
-    dataset = YangOldNew()
+    dataset = YangOldNew('/ssd/gregory/smile/8.31/')
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,

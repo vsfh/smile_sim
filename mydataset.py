@@ -19,13 +19,15 @@ def flip(x, dim):
 
 
 class YangOldNew(Dataset):
-    def __init__(self, mode='decoder'):
-        self.path = '/mnt/d/data/smile/Teeth_simulation_10K'
+    def __init__(self, path, mode='decoder'):
+        self.path = path
         self.all_files = []
         
         for folder in os.listdir(self.path):
-            if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
-                self.all_files.append(os.path.join(self.path, folder, 'modal'))
+            self.all_files.append(os.path.join(self.path, folder,))
+            
+            # if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
+                # self.all_files.append(os.path.join(self.path, folder, 'modal'))
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
