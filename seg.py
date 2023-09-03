@@ -190,7 +190,7 @@ def upper_gums():
 
 def batch_seg(path):
     from test import Yolo, Segmentation, sigmoid
-    from utils import loose_bbox
+    from pyutils import loose_bbox
 
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     img_dir = '/mnt/e/data/smile/to_b/test_63/test_03_26'

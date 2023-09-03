@@ -98,7 +98,7 @@ import onnxruntime
 import os
 def onnx_infer():
     from test import Yolo, Segmentation, sigmoid
-    from utils import loose_bbox
+    from pyutils import loose_bbox
     
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))

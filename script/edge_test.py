@@ -7,7 +7,7 @@ import torch.distributed as dist
 from torchvision import transforms, utils
 from test import Yolo, Segmentation, sigmoid
 from tid_seg.models import get_yolo, parameter_pred, narrow_edge
-from utils import loose_bbox
+from pyutils import loose_bbox
 
 def noise():
     from train_less_cgan import mixing_noise

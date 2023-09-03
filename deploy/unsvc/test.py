@@ -5,7 +5,7 @@ import glob
 import trimesh
 from scipy.spatial.transform import Rotation as R
 import cv2
-import utils
+import pyutils
 from pytorch3d.structures import Meshes, join_meshes_as_scene
 from pytorch3d.renderer import (
 	RasterizationSettings, MeshRenderer, MeshRasterizer, BlendParams,
@@ -19,17 +19,17 @@ device = 'cuda:0'
 
 img_folder = '/mnt/e/data/smile/to_b/20220713_SmileyTest_200case/e38be3672450e0155bafbc290b11d0c7'
 tooth_dict = {int(os.path.basename(p).split('.')[0][-2:]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'info', 'tooth*.stl'))}
-teeth = utils.load_teeth(tooth_dict, type='tooth', half=False, sample=False, voxel_size=1.0)
+teeth = pyutils.load_teeth(tooth_dict, type='tooth', half=False, sample=False, voxel_size=1.0)
 step = {}
 for arr in np.loadtxt('/mnt/e/data/smile/to_b/20220713_SmileyTest_200case/e38be3672450e0155bafbc290b11d0c7/info/step1.txt'):
     trans = np.eye(4,4)
     trans[:3,3] = arr[-3:]
     trans[:3,:3] = R.from_quat(arr[1:5]).as_matrix()
     step[str(int(arr[0]))] = trans
-up_mesh = utils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
-up_tensor = utils.meshes_to_tensor(up_mesh, device=device)
-down_mesh = utils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
-down_tensor = utils.meshes_to_tensor(down_mesh, device=device)
+up_mesh = pyutils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
+up_tensor = pyutils.meshes_to_tensor(up_mesh, device=device)
+down_mesh = pyutils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
+down_tensor = pyutils.meshes_to_tensor(down_mesh, device=device)
     
 opt_cameras = PerspectiveCameras(device=device, focal_length=torch.tensor(12.9807, device='cuda:0'))
 lights = PointLights(device=device, ambient_color=((0.9, 0.9, 0.9),), location=[[2.0, -60.0, -12.0]])

@@ -9,6 +9,8 @@ from pytorch3d.renderer import (
     TexturesVertex,
     TexturesUV
 )
+import torch.nn.functional as F
+
 # from gum_generation.predict_lib import generate_gum
 # from gum.gum_deformation.deformer import DeformDLL
 # from gum_generation.test_half_jaw import get_result
@@ -350,7 +352,7 @@ def apply_step(teeth, step, keys=None, mode='all', add=True, num_teeth=None, exp
         return meshes
 
 
-def meshes_to_tensor(meshes, device='cpu'):
+def meshes_to_tensor(meshes, join='batch', device='cpu'):
     if not isinstance(meshes, list):
         meshes = [meshes]
 
@@ -376,8 +378,9 @@ def meshes_to_tensor(meshes, device='cpu'):
     #     faces=faces,
     #     # textures=textures
     # )
-    if len(tensors)==1:
-        return tensors[0]
+    if join=='batch':
+        mesh_tensor = join_meshes_as_batch(tensors, include_textures=True)
+        return mesh_tensor
     else:
         mesh_tensor = join_meshes_as_scene(tensors, include_textures=True)
         return mesh_tensor
@@ -439,6 +442,18 @@ def deepmap_to_edgemap(teeth_rgb, mouth_mask, mid):
 
     return up_edge, down_edge
 
+def erode(binary_image):
+    erosion_kernel = torch.ones(1, 1, 3, 3).cuda()
+    eroded_image = F.conv2d(1-binary_image, erosion_kernel, padding=1)
+    # eroded_image = 1-torch.where(eroded_image >= 1, torch.tensor(1.0), eroded_image)
+    eroded_image = 1- eroded_image.clip(0,1)
+    return eroded_image
+
+def dilate(binary_image):
+    dilation_kernel = torch.ones(1, 1, 3, 3).cuda()
+    dilated_image = F.conv2d(binary_image, dilation_kernel, padding=1)
+    # dilated_image = torch.where(dilated_image >= 1, torch.tensor(1.0), dilated_image)
+    return dilated_image.clip(0,1)
 
 if __name__ == '__main__':
     get_step_array()

@@ -7,7 +7,7 @@ from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
 from test import Yolo, Segmentation, sigmoid
-from utils import loose_bbox
+from pyutils import loose_bbox
 import onnxruntime
 sess = onnxruntime.InferenceSession('model_single.onnx',
                                     providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider',

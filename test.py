@@ -3,7 +3,7 @@ import torch
 # from encoders.psp_encoders import GradualStyleEncoder
 # from cgan import TeethGenerator
 import onnxruntime
-from utils import *
+from pyutils import *
 
 
 def sigmoid(x):

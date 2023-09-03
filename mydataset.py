@@ -37,17 +37,19 @@ class YangOldNew(Dataset):
     
     def __getitem__(self, index):
         img_folder = self.all_files[index]
-        img = cv2.imread(os.path.join(img_folder, 'mouth.png'))
-        mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
-        teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
-        
+        img = cv2.imread(os.path.join(img_folder, 'Img.jpg'))
         im = self.preprocess(img)
-        mk = self.preprocess(mask)
-        teeth_3d = self.preprocess(teeth_3d)
+        return {'images': im}
+
+        # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
+        # teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
         
-        cond = teeth_3d*mk+im*(1-mk)
+        # mk = self.preprocess(mask)
+        # teeth_3d = self.preprocess(teeth_3d)
         
-        return {'images': im, 'cond':cond}
+        # cond = teeth_3d*mk+im*(1-mk)
+        # return {'images': im, 'cond':cond}
+        
         
     def preprocess(self, img):
         img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)

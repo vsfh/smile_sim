@@ -6,7 +6,7 @@ from torch.utils import data
 import torch.distributed as dist
 from torchvision import transforms, utils
 # from test import Yolo, Segmentation, sigmoid
-from utils import loose_bbox
+from pyutils import loose_bbox
 
 def noise():
     from train_less_cgan import mixing_noise
@@ -145,18 +145,63 @@ def find_case():
         cv2.imwrite(f'./example/ll/{folder}.jpg', img)
         
 def copy_file():
+    import natsort
     path = '/mnt/d/data/smile/Teeth_simulation_10K'
-    for folder in os.listdir(path)[:4000]:
+    for folder in natsort.natsorted(os.listdir(path))[:3000]:
         if os.path.exists(os.path.join(path, folder, 'modal', 'blend.png')):
             im = cv2.imread(os.path.join(path, folder, 'modal','mouth.png'))
             mk = cv2.imread(os.path.join(path, folder, 'modal','mouth_mask.png'))
             teeth = cv2.imread(os.path.join(path, folder, 'modal','teeth_3d.png'))
-            os.makedirs(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder), exist_ok=True)
-            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'mouth.png'), im)
-            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'mouth_mask.png'), mk)
-            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d/8.31', folder,'teeth_3d.png'), teeth)
+            bl = cv2.imread(os.path.join(path, folder, 'modal','blend.png'))
             
+            os.makedirs(os.path.join('/mnt/e/data/smile/teeth_3d_new/8.31', folder), exist_ok=True)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d_new/8.31', folder,'mouth.png'), im)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d_new/8.31', folder,'mouth_mask.png'), mk)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d_new/8.31', folder,'teeth_3d.png'), teeth)
+            cv2.imwrite(os.path.join('/mnt/e/data/smile/teeth_3d_new/all', folder+'.png'), bl)
             
+def select():
+    path = '/mnt/e/data/smile/teeth_3d/all'
+    with open('img_list.txt', 'w+')as f:
+        for img_name in os.listdir(path):
+            im = cv2.imread(os.path.join(path, img_name))
+            cv2.imshow('im', im)
+            key = cv2.waitKey()
+            print(key)
+            # break
+            
+            if key == 100:
+                f.writelines(img_name.split('.')[0]+'\n')
+        f.close()
+        
+def dilate_erode():
+    import torch
+    import torch.nn.functional as F
+
+    # Create a binary image tensor (0, 1 values)
+    binary_image = torch.from_numpy(cv2.imread('/mnt/d/data/smile/Teeth_simulation_10K/C01002721495/modal/mouth_mask.png').astype(np.float32))[...,-1]/255
+
+    # Define the kernel for dilation and erosion
+    dilation_kernel = torch.ones(3, 3)
+    erosion_kernel = torch.ones(15, 15)
+
+    # Perform dilation
+    dilated_image = F.conv2d(binary_image.view(1, 1, *binary_image.shape), dilation_kernel.view(1, 1, *dilation_kernel.shape), padding=1)
+    dilated_image = torch.where(dilated_image >= 1, torch.tensor(1.0), torch.tensor(0.0))
+
+    # Perform erosion
+    eroded_image = F.conv2d(1-binary_image.view(1, 1, *binary_image.shape), erosion_kernel.view(1, 1, *erosion_kernel.shape), padding=7)
+    eroded_image = 1-torch.where(eroded_image >= 1, torch.tensor(1.0), torch.tensor(0.0))
+    
+    a = dilated_image[0][0].detach()-eroded_image[0][0].detach()
+    cv2.imshow('dilate', 255*a.numpy().astype(np.uint8))
+    cv2.waitKey(0)
+
+def erode(binary_image):
+    erosion_kernel = torch.ones(3, 3)
+    eroded_image = F.conv2d(1-binary_image, erosion_kernel.view(binary_image.shape[0], 1, *erosion_kernel.shape), padding=7)
+    eroded_image = 1-torch.where(eroded_image >= 1, torch.tensor(1.0), torch.tensor(0.0))
+    return eroded_image
 if __name__ == "__main__":
     copy_file()
     a = 1
