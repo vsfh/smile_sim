@@ -147,11 +147,11 @@ class Coach:
 
                 # Validation related
                 val_loss_dict = None
-                if self.global_step % self.opts.val_interval == 0 or self.global_step == self.opts.max_steps:
-                    val_loss_dict = self.validate()
-                    if val_loss_dict and (self.best_val_loss is None or val_loss_dict['loss'] < self.best_val_loss):
-                        self.best_val_loss = val_loss_dict['loss']
-                        self.checkpoint_me(val_loss_dict, is_best=True)
+                # if self.global_step % self.opts.val_interval == 0 or self.global_step == self.opts.max_steps:
+                #     val_loss_dict = self.validate()
+                #     if val_loss_dict and (self.best_val_loss is None or val_loss_dict['loss'] < self.best_val_loss):
+                #         self.best_val_loss = val_loss_dict['loss']
+                #         self.checkpoint_me(val_loss_dict, is_best=True)
 
                 if self.global_step % self.opts.save_interval == 0 or self.global_step == self.opts.max_steps:
                     if val_loss_dict is not None:
@@ -449,8 +449,8 @@ if __name__=='__main__':
     # new options for StyleGANEX
     opts.add_argument('--feat_ind', default=0, type=int, help='Layer index of G to accept the first-layer feature')
     opts.add_argument('--max_pooling', action="store_true", help='Apply max pooling or average pooling')
-    opts.add_argument('--use_skip', action="store_true", help='Using skip connection from the encoder to the styleconv layers of G')
-    opts.add_argument('--use_skip_torgb', action="store_true", help='Using skip connection from the encoder to the toRGB layers of G.')
+    opts.add_argument('--use_skip', default=True, help='Using skip connection from the encoder to the styleconv layers of G')
+    opts.add_argument('--use_skip_torgb', default=False, help='Using skip connection from the encoder to the toRGB layers of G.')
     opts.add_argument('--skip_max_layer', default=7, type=int, help='Layer used for skip connection. 1,2,3,4,5,6,7 correspond to 4,8,16,32,64,128,256')
     opts.add_argument('--crop_face', action="store_true", help='Use aligned cropped face to predict style latent code w+')
     opts.add_argument('--affine_augment', action="store_true", help='Apply random affine transformation during training')
@@ -482,8 +482,8 @@ if __name__=='__main__':
     opts.add_argument('--start_from_latent_avg', action='store_true', help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
-    opts.add_argument('--lpips_lambda', default=0.8, type=float, help='LPIPS loss multiplier factor')
-    opts.add_argument('--id_lambda', default=0.1, type=float, help='ID loss multiplier factor')
+    opts.add_argument('--lpips_lambda', default=0, type=float, help='LPIPS loss multiplier factor')
+    opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
     opts.add_argument('--l2_lambda', default=1, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
@@ -494,8 +494,8 @@ if __name__=='__main__':
     opts.add_argument('--r1', default=1, type=float, help="weight of the r1 regularization")
     opts.add_argument('--tmp_lambda', default=0, type=float, help='Temporal loss multiplier factor')
 
-    opts.add_argument('--stylegan_weights', default='/mnt/e/share/150000.pt', type=str, help='Path to StyleGAN model weights')
-    # opts.add_argument('--decoder_path', default='/mnt/e/share/model000500000.pt', type=str, help='Path to pSp model checkpoint')
+    opts.add_argument('--stylegan_weights', default=None, type=str, help='Path to StyleGAN model weights')
+    # opts.add_argument('--decoder_path', default='/mnt/e/share/150000.pt', type=str, help='Path to pSp model checkpoint')
     # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
     opts.add_argument('--max_steps', default=500000, type=int, help='Maximum number of training steps')
