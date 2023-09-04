@@ -33,11 +33,9 @@ class Coach:
         self.net = pSp(self.opts).to(self.device)
         if self.opts.adv_lambda > 0:  ##### modified, add discriminator
             self.discriminator = Discriminator(1024, channel_multiplier=2, img_channel=3)
-            if self.opts.checkpoint_path is not None:
-                ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
-                if 'discriminator' in ckpt.keys():
-                    print('Loading discriminator from checkpoint: {}'.format(self.opts.checkpoint_path))
-                    self.discriminator.load_state_dict(ckpt['discriminator'], strict=False)
+            if self.opts.stylegan_weights is not None:
+                ckpt = torch.load(self.opts.stylegan_weights, map_location='cpu')
+                self.discriminator.load_state_dict(ckpt['d'], strict=False)
             self.discriminator = self.discriminator.to(self.device)
             self.discriminator_optimizer = torch.optim.Adam(list(self.discriminator.parameters()),
                                                             lr=self.opts.learning_rate)
@@ -473,7 +471,7 @@ if __name__=='__main__':
     opts.add_argument('--zero_noise', action="store_true", help='Whether using zero noises')
     opts.add_argument('--direction_path', type=str, default=None, help='Path to the direction vector to augment generated data')
 
-    opts.add_argument('--batch_size', default=4, type=int, help='Batch size for training')
+    opts.add_argument('--batch_size', default=2, type=int, help='Batch size for training')
     opts.add_argument('--test_batch_size', default=8, type=int, help='Batch size for testing and inference')
     opts.add_argument('--workers', default=4, type=int, help='Number of train dataloader workers')
     opts.add_argument('--test_workers', default=8, type=int, help='Number of test/inference dataloader workers')
@@ -484,8 +482,8 @@ if __name__=='__main__':
     opts.add_argument('--start_from_latent_avg', action='store_true', help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
-    opts.add_argument('--lpips_lambda', default=0, type=float, help='LPIPS loss multiplier factor')
-    opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
+    opts.add_argument('--lpips_lambda', default=0.8, type=float, help='LPIPS loss multiplier factor')
+    opts.add_argument('--id_lambda', default=0.1, type=float, help='ID loss multiplier factor')
     opts.add_argument('--l2_lambda', default=1, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
@@ -496,8 +494,9 @@ if __name__=='__main__':
     opts.add_argument('--r1', default=1, type=float, help="weight of the r1 regularization")
     opts.add_argument('--tmp_lambda', default=0, type=float, help='Temporal loss multiplier factor')
 
-    opts.add_argument('--stylegan_weights', default=None, type=str, help='Path to StyleGAN model weights')
-    opts.add_argument('--checkpoint_path', default=None, type=str, help='Path to pSp model checkpoint')
+    opts.add_argument('--stylegan_weights', default='/mnt/e/share/150000.pt', type=str, help='Path to StyleGAN model weights')
+    # opts.add_argument('--decoder_path', default='/mnt/e/share/model000500000.pt', type=str, help='Path to pSp model checkpoint')
+    # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
     opts.add_argument('--max_steps', default=500000, type=int, help='Maximum number of training steps')
     opts.add_argument('--image_interval', default=100, type=int, help='Interval for logging train images during training')

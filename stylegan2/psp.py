@@ -1,11 +1,12 @@
 import math
 import torch
 from torch import nn
-from encoders import psp_encoders
-from stylegan2.model_ex import Generator
 import sys
 sys.path.append('.')
 sys.path.append('..')
+from encoders import psp_encoders
+from stylegan2.model_ex import Generator
+
 def get_keys(d, name):
     if 'state_dict' in d:
         d = d['state_dict']
@@ -13,13 +14,16 @@ def get_keys(d, name):
     return d_filt
 
 class pSp(nn.Module):
-    def __init__(self, ckpt=None):
+    def __init__(self, opts=None):
         super(pSp, self).__init__()
         # compute number of style inputs based on the output resolution
         self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
         self.encoder = self.set_encoder()
         self.decoder = Generator(256, 512, 8)
+        if opts.stylegan_weights is not None:
+            ckpt = torch.load(opts.stylegan_weights, map_location='cpu')
+            self.decoder.load_state_dict(ckpt['g_ema'])
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         self.latent_avg = None
     def set_encoder(self):
