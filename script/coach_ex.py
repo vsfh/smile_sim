@@ -450,7 +450,7 @@ if __name__=='__main__':
     opts.add_argument('--feat_ind', default=0, type=int, help='Layer index of G to accept the first-layer feature')
     opts.add_argument('--max_pooling', action="store_true", help='Apply max pooling or average pooling')
     opts.add_argument('--use_skip', default=True, help='Using skip connection from the encoder to the styleconv layers of G')
-    opts.add_argument('--use_skip_torgb', action="store_true", help='Using skip connection from the encoder to the toRGB layers of G.')
+    opts.add_argument('--use_skip_torgb', default=False, help='Using skip connection from the encoder to the toRGB layers of G.')
     opts.add_argument('--skip_max_layer', default=7, type=int, help='Layer used for skip connection. 1,2,3,4,5,6,7 correspond to 4,8,16,32,64,128,256')
     opts.add_argument('--crop_face', action="store_true", help='Use aligned cropped face to predict style latent code w+')
     opts.add_argument('--affine_augment', action="store_true", help='Apply random affine transformation during training')

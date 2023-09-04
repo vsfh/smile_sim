@@ -19,17 +19,13 @@ class pSp(nn.Module):
         # compute number of style inputs based on the output resolution
         self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
-        self.encoder = self.set_encoder()
+        self.encoder = psp_encoders.GradualStyleEncoder(50, 'ir_se', use_skip=opts.use_skip)
         self.decoder = Generator(256, 512, 8)
         if opts.stylegan_weights is not None:
             ckpt = torch.load(opts.stylegan_weights, map_location='cpu')
             self.decoder.load_state_dict(ckpt['g_ema'])
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         self.latent_avg = None
-    def set_encoder(self):
-        encoder = psp_encoders.GradualStyleEncoder(50, 'ir_se')
-        return encoder
-
     # x1: image for first-layer feature f. 
     # x2: image for style latent code w+. If not specified, x2=x1.
     # inject_latent: for sketch/mask-to-face translation, another latent code to fuse with w+
