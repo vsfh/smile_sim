@@ -32,7 +32,7 @@ class Coach:
         # Initialize network
         self.net = pSp(self.opts).to(self.device)
         if self.opts.adv_lambda > 0:  ##### modified, add discriminator
-            self.discriminator = Discriminator(1024, channel_multiplier=2, img_channel=3)
+            self.discriminator = Discriminator(256, channel_multiplier=2)
             if self.opts.stylegan_weights is not None:
                 ckpt = torch.load(self.opts.stylegan_weights, map_location='cpu')
                 self.discriminator.load_state_dict(ckpt['d'], strict=False)
@@ -489,7 +489,7 @@ if __name__=='__main__':
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')
     opts.add_argument('--moco_lambda', default=0, type=float, help='Moco-based feature similarity loss multiplier factor')
-    opts.add_argument('--adv_lambda', default=0, type=float, help='Adversarial loss multiplier factor')
+    opts.add_argument('--adv_lambda', default=1, type=float, help='Adversarial loss multiplier factor')
     opts.add_argument('--d_reg_every', default=16, type=int, help='Interval of the applying r1 regularization')
     opts.add_argument('--r1', default=1, type=float, help="weight of the r1 regularization")
     opts.add_argument('--tmp_lambda', default=0, type=float, help='Temporal loss multiplier factor')

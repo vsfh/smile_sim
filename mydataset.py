@@ -58,7 +58,7 @@ class YangOldNew(Dataset):
         im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
         im = torch.from_numpy(im)  # to torch
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
-        im /= 255.0  # 0-255 to 0.0-1.0
+        im = (im/255.0)*2-1  # 0-255 to 0.0-1.0
         return im
 
 
