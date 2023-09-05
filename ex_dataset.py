@@ -25,7 +25,7 @@ class RandomPerspective:
         # Mosaic border
         self.border = border
         self.pre_transform = pre_transform
-
+        self.size = (256,256)
     def __call__(self, img):
         """Center."""
         C = np.eye(3, dtype=np.float32)
@@ -61,14 +61,15 @@ class RandomPerspective:
         # Affine image
 
         if self.perspective:
-            img = cv2.warpPerspective(img, M, dsize=self.size, borderValue=(114, 114, 114))
+            img = cv2.warpPerspective(img, M, dsize=self.size, borderValue=(0, 0, 0))
         else:  # affine
-            img = cv2.warpAffine(img, M[:2], dsize=self.size, borderValue=(114, 114, 114))
+            img = cv2.warpAffine(img, M[:2], dsize=self.size, borderValue=(0, 0, 0))
         return img
 
 class ImagesDataset(Dataset):
     def __init__(self, mode='train'):
-        self.path = '/ssd/gregory/smile/out/'
+        # self.path = '/ssd/gregory/smile/out/'
+        self.path = '/mnt/d/data/smile/out'
         self.all_files = []
         if mode=='train':
             for folder in os.listdir(self.path)[5:]:
@@ -82,6 +83,7 @@ class ImagesDataset(Dataset):
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
+        self.trans = RandomPerspective(degrees=5.0, translate=0.1, scale=0.1, shear=0.1)
     
     def __len__(self):
         return len(self.all_files)
@@ -99,9 +101,10 @@ class ImagesDataset(Dataset):
         teeth_3d = self.preprocess(teeth_3d)
         ed = self.preprocess(edge)
         
-        cond = ed*mk+im*(1-mk)
+        input = ed*mk+im*(1-mk)
+        cond = self.preprocess(self.trans(img*mask))
         
-        return {'images': im, 'cond':cond}
+        return {'images': im, 'input':input, 'cond':cond}
         
     def preprocess(self, img):
         img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
@@ -110,3 +113,8 @@ class ImagesDataset(Dataset):
         im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
         im = im / 255.0  # 0-255 to 0.0-1.0
         return im
+
+if __name__=='__main__':
+    ds = ImagesDataset()
+    for batch in ds:
+        pass
