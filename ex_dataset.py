@@ -118,7 +118,7 @@ class RandomPerspective:
 
 class ImagesDataset(Dataset):
     def __init__(self, mode='train'):
-        self.path = '/mnt/d/data/smile/out'
+        self.path = '/ssd/gregory/smile/out/'
         self.all_files = []
         if mode=='train':
             for folder in os.listdir(self.path)[5:]:

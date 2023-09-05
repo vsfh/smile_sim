@@ -113,9 +113,9 @@ class Coach:
                 x, y = batch['cond'], batch['images']
                 
                 x, y = x.to(self.device).float(), y.to(self.device).float()
+                x = y.detach().clone()
 
-
-                y_hat, latent = self.net.forward(x1=x, x2=x.clone(), resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
+                y_hat, latent = self.net.forward(x1=x, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
                                                      first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip, return_latents=True)  
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
@@ -206,7 +206,7 @@ class Coach:
                                                      editing_w=editing_w)   
                     y0_hat = y0_hat.detach()              
 
-                y_hat, latent = self.net.forward(x1=x, x2=x_tilde, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
+                y_hat, latent = self.net.forward(x1=x, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
                                                      first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip, return_latents=True)                  
                 
                 # adversarial loss             
@@ -439,7 +439,7 @@ class Coach:
         
 if __name__=='__main__':
     opts = ArgumentParser()
-    opts.add_argument('--exp_dir', default='./run',type=str, help='Path to experiment output directory')
+    opts.add_argument('--exp_dir', default='/ssd/gregory/smile/psp_weight/',type=str, help='Path to experiment output directory')
     opts.add_argument('--dataset_type', default='ffhq_sketch_to_face', type=str, help='Type of dataset/experiment to run')
     opts.add_argument('--encoder_type', default='GradualStyleEncoder', type=str, help='Which encoder to use') 
     opts.add_argument('--input_nc', default=3, type=int, help='Number of input image channels to the psp encoder')
@@ -478,7 +478,7 @@ if __name__=='__main__':
 
     opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
     opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
-    opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
+    opts.add_argument('--train_decoder', default=True, type=bool, help='Whether to train the decoder model')
     opts.add_argument('--start_from_latent_avg', action='store_true', help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
@@ -489,13 +489,13 @@ if __name__=='__main__':
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')
     opts.add_argument('--moco_lambda', default=0, type=float, help='Moco-based feature similarity loss multiplier factor')
-    opts.add_argument('--adv_lambda', default=1, type=float, help='Adversarial loss multiplier factor')
+    opts.add_argument('--adv_lambda', default=0.4, type=float, help='Adversarial loss multiplier factor')
     opts.add_argument('--d_reg_every', default=16, type=int, help='Interval of the applying r1 regularization')
     opts.add_argument('--r1', default=1, type=float, help="weight of the r1 regularization")
     opts.add_argument('--tmp_lambda', default=0, type=float, help='Temporal loss multiplier factor')
 
-    opts.add_argument('--stylegan_weights', default=None, type=str, help='Path to StyleGAN model weights')
-    # opts.add_argument('--decoder_path', default='/mnt/e/share/150000.pt', type=str, help='Path to pSp model checkpoint')
+    opts.add_argument('--stylegan_weights', default='/ssd/gregory/smile/ori_style/checkpoint/150000.pt', type=str, help='Path to StyleGAN model weights')
+    # opts.add_argument('--decoder_path', default='/mnt/e/share/model000500000.pt', type=str, help='Path to pSp model checkpoint')
     # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
     opts.add_argument('--max_steps', default=500000, type=int, help='Maximum number of training steps')
