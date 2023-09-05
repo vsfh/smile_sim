@@ -478,7 +478,7 @@ if __name__=='__main__':
 
     opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
     opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
-    opts.add_argument('--train_decoder', default=True, type=bool, help='Whether to train the decoder model')
+    opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
     opts.add_argument('--start_from_latent_avg', action='store_true', help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
