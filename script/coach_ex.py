@@ -113,9 +113,9 @@ class Coach:
                 x, y = batch['cond'], batch['images']
                 
                 x, y = x.to(self.device).float(), y.to(self.device).float()
-                x = y.detach().clone()
+                x2 = y.detach().clone()
 
-                y_hat, latent = self.net.forward(x1=x, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
+                y_hat, latent = self.net.forward(x1=x, x2=x2, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
                                                      first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip, return_latents=True)  
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
