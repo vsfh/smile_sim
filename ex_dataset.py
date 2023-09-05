@@ -102,7 +102,8 @@ class ImagesDataset(Dataset):
         ed = self.preprocess(edge)
         
         input = ed*mk+im*(1-mk)
-        cond = self.preprocess(self.trans(img*mask))
+        img[mask==0]=0
+        cond = self.preprocess(self.trans(img))
         
         return {'images': im, 'input':input, 'cond':cond}
         
@@ -117,4 +118,4 @@ class ImagesDataset(Dataset):
 if __name__=='__main__':
     ds = ImagesDataset()
     for batch in ds:
-        pass
+        break
