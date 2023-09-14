@@ -18,9 +18,14 @@ from utils import common, train_utils
 from criteria import id_loss, w_norm
 from ex_dataset import ImagesDataset
 from criteria.lpips.lpips import LPIPS
-from stylegan2.psp import pSp
 from stylegan2.model import Discriminator ##### modified
+from script.ranger import Ranger
 
+class MyObject:
+    def __init__(self, dictionary):
+        for key, value in dictionary.items():
+            setattr(self, key, value)
+            
 class Coach:
     def __init__(self, opts):
         self.opts = opts
@@ -30,6 +35,10 @@ class Coach:
         self.device = 'cuda:0'  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
         self.opts.device = self.device
         # Initialize network
+        if opts.l2_lambda!=0:
+            from stylegan2.psp import pSp
+        else:
+            from stylegan2.psp_iortho import pSp
         self.net = pSp(self.opts).to(self.device)
         if self.opts.adv_lambda > 0:  ##### modified, add discriminator
             self.discriminator = Discriminator(256, channel_multiplier=2)
@@ -110,19 +119,19 @@ class Coach:
                 
                 # x is the input, y is the ground truth
                 # the faces in x and y are aligned, we will apply geometric transformation to make them unaligned.
-                x, y = batch['cond'], batch['images']
+                x2, y, x1 = batch['cond'], batch['images'], batch['input']
                 
-                x, y = x.to(self.device).float(), y.to(self.device).float()
-                x2 = y.detach().clone()
+                x1, y = x1.to(self.device).float(), y.to(self.device).float()
+                x2 = x2.to(self.device).float()
 
-                y_hat, latent = self.net.forward(x1=x, x2=x2, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
+                y_hat, latent = self.net.forward(x1=x1[:,:2,:,:], x2=x1[:,-3:,:,:], resize=(x2.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise, use_feature=self.opts.use_feature,
                                                      first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip, return_latents=True)  
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
                     d_loss_dict = self.train_discriminator(y, y_hat)
                 
                 # calculate losses
-                loss, loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
+                loss, loss_dict, id_logs = self.calc_loss(x1, y, y_hat, latent)
                 
                 if self.opts.adv_lambda > 0:
                     loss_dict = {**d_loss_dict, **loss_dict}
@@ -134,12 +143,12 @@ class Coach:
                 
                 # Logging related
                 with torch.no_grad(): ##### modified for SR task, since x, y and y_hat may have different resolution
-                    y = F.adaptive_avg_pool2d(y, (x.shape[2], x.shape[3]))
-                    y_hat = F.adaptive_avg_pool2d(y_hat, (x.shape[2], x.shape[3]))
-                    x = torch.clamp(x, -1, 1)  
+                    y = F.adaptive_avg_pool2d(y, (x1.shape[2], x1.shape[3]))
+                    y_hat = F.adaptive_avg_pool2d(y_hat, (x1.shape[2], x1.shape[3]))
+                    x1 = torch.clamp(x1, -1, 1)  
                     
                 if self.global_step % self.opts.image_interval == 0 or (self.global_step < 1000 and self.global_step % 25 == 0):
-                    self.parse_and_log_images(id_logs, x, y, y_hat, title='images/train/faces')
+                    self.parse_and_log_images(id_logs, x1[:,:3,:,:], y, x2, y_hat, title='train')
                     
                 if self.global_step % self.opts.board_interval == 0:
                     self.print_metrics(loss_dict, prefix='train')
@@ -147,11 +156,11 @@ class Coach:
 
                 # Validation related
                 val_loss_dict = None
-                # if self.global_step % self.opts.val_interval == 0 or self.global_step == self.opts.max_steps:
-                #     val_loss_dict = self.validate()
-                #     if val_loss_dict and (self.best_val_loss is None or val_loss_dict['loss'] < self.best_val_loss):
-                #         self.best_val_loss = val_loss_dict['loss']
-                #         self.checkpoint_me(val_loss_dict, is_best=True)
+                if self.global_step % self.opts.val_interval == 0 or self.global_step == self.opts.max_steps:
+                    val_loss_dict = self.validate()
+                    if val_loss_dict and (self.best_val_loss is None or val_loss_dict['loss'] < self.best_val_loss):
+                        self.best_val_loss = val_loss_dict['loss']
+                        self.checkpoint_me(val_loss_dict, is_best=True)
 
                 if self.global_step % self.opts.save_interval == 0 or self.global_step == self.opts.max_steps:
                     if val_loss_dict is not None:
@@ -169,51 +178,24 @@ class Coach:
         self.net.eval()
         agg_loss_dict = []
         for batch_idx, batch in enumerate(self.test_dataloader):
-            x, y = batch
+            x2, y, x1 = batch['cond'], batch['images'], batch['input']
 
             editing_w = None
             if self.editing_w is not None:
                 editing_w = self.editing_w[torch.randint(0, self.editing_w.shape[0], (1,))]
 
             with torch.no_grad():
-                x, y = x.to(self.device).float(), y.to(self.device).float()
-                scale = int(y.shape[2] // x.shape[2])
-                assert(int(y.shape[3] // x.shape[3]) == scale)
-                
-                # prepare aligned images for w+ extraction
-                x_tilde = None
-                y_tilde = y.clone() if scale ==1 else F.interpolate(y, (x.shape[2], x.shape[3]), mode='bilinear')
-                # crop the centered 256*256 region from a H/8*W/8 image 
-                if self.opts.crop_face:  
-                    crop_size = int((x.shape[2] - 256) // 2) 
-                    x_tilde = x.clone()
-                    if crop_size > 0:
-                        x_tilde = x_tilde[:,:,crop_size:-crop_size,crop_size:-crop_size]
-                        if self.opts.use_latent_mask:
-                            y_tilde = y_tilde[:,:,crop_size:-crop_size,crop_size:-crop_size]
-                            
-                # for flicker suppression loss in video-related tasks
-                y0_hat = None
-                if self.opts.tmp_lambda > 0 and self.global_step * 2 >= self.opts.max_steps: 
-                    if self.opts.use_latent_mask: # for sketch/mask-to-face translation. not used in the paper
-                        y0_hat = self.net.forward(x1=x, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
-                                                     latent_mask=self.latent_mask, inject_latent=self.net.encoder(y_tilde), 
-                                                     first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip,
-                                                     editing_w=editing_w)
-                    else:
-                        y0_hat = self.net.forward(x1=x, x2=x_tilde, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
-                                                     first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip,
-                                                     editing_w=editing_w)   
-                    y0_hat = y0_hat.detach()              
+                x2, y, x1 = x2.to(self.device).float(), y.to(self.device).float(), x1.to(self.device).float()
+        
 
-                y_hat, latent = self.net.forward(x1=x, resize=(x.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise,
+                y_hat, latent = self.net.forward(x1=x1[:,:2,:,:], x2=x1[:,-3:,:,:], resize=(x1.shape[2:]==y.shape[2:]), zero_noise=self.opts.zero_noise, use_feature=self.opts.use_feature,
                                                      first_layer_feature_ind=self.opts.feat_ind, use_skip=self.opts.use_skip, return_latents=True)                  
                 
                 # adversarial loss             
                 if self.opts.adv_lambda > 0: 
                     cur_d_loss_dict = self.validate_discriminator(y, y_hat)
                 
-                loss, cur_loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent, y0_hat) 
+                loss, cur_loss_dict, id_logs = self.calc_loss(x1, y, y_hat, latent,) 
                 
                 if self.opts.adv_lambda > 0: 
                     cur_loss_dict = {**cur_d_loss_dict, **cur_loss_dict}
@@ -222,17 +204,17 @@ class Coach:
 
             # Logging related
             with torch.no_grad(): ##### modified for SR task
-                y = F.adaptive_avg_pool2d(y, (x.shape[2], x.shape[3]))
-                y_hat = F.adaptive_avg_pool2d(y_hat, (x.shape[2], x.shape[3]))
-                x = torch.clamp(x, -1, 1)  ##### modified
+                y = F.adaptive_avg_pool2d(y, (x1.shape[2], x1.shape[3]))
+                y_hat = F.adaptive_avg_pool2d(y_hat, (x1.shape[2], x1.shape[3]))
+                x1 = torch.clamp(x1, -1, 1)  ##### modified
             
-            self.parse_and_log_images(id_logs, x, y, y_hat,
-                                      title='images/test/faces',
+            self.parse_and_log_images(id_logs, x1[:,:3,:,:], y, x2, y_hat,
+                                      title='test',
                                       subscript='{:04d}'.format(batch_idx))
 
             # Log images of first batch to wandb
             if self.opts.use_wandb and batch_idx == 0:
-                self.wb_logger.log_images_to_wandb(x, y, y_hat, id_logs, prefix="test", step=self.global_step, opts=self.opts)
+                self.wb_logger.log_images_to_wandb(x1, y, y_hat, id_logs, prefix="test", step=self.global_step, opts=self.opts)
 
             # For first step just do sanity test on small amount of data
             if self.global_step == 0 and batch_idx >= 4:
@@ -260,14 +242,16 @@ class Coach:
                 f.write(f'Step - {self.global_step}, \n{loss_dict}\n')
 
     def configure_optimizers(self):
-        if hasattr(self.opts, 'pretrain_model') and self.opts.pretrain_model == 'input_label_layer': ##### modified
-            params = list(self.net.encoder.input_label_layer.parameters())
-        else:
+        if self.opts.l2_lambda!=0: 
             params = list(self.net.encoder.parameters())
+        else:
+            params = list(self.net.encoder1.parameters())+list(self.net.encoder2.parameters())
         if self.opts.train_decoder:
             params += list(self.net.decoder.parameters())
         if self.opts.optim_name == 'adam':
             optimizer = torch.optim.Adam(params, lr=self.opts.learning_rate)
+        else:
+            optimizer = Ranger(params, lr=self.opts.learning_rate)
         return optimizer
 
     def configure_datasets(self):
@@ -333,11 +317,12 @@ class Coach:
         for key, value in metrics_dict.items():
             print(f'\t{key} = ', value)
 
-    def parse_and_log_images(self, id_logs, x, y, y_hat, title, subscript=None, display_count=2):
+    def parse_and_log_images(self, id_logs, x, y, z, y_hat, title, subscript=None, display_count=2):
         im_data = []
         for i in range(display_count):
             cur_im_data = {
                 'input_face': common.log_input_image(x[i], self.opts),
+                'cond_face': common.tensor2im(z[i]),
                 'target_face': common.tensor2im(y[i]),
                 'output_face': common.tensor2im(y_hat[i]),
             }
@@ -353,9 +338,9 @@ class Coach:
         if log_latest:
             step = 0
         if subscript:
-            path = os.path.join(self.logger.log_dir, name, f'{subscript}_{step:04d}.jpg')
+            path = os.path.join(self.logger.log_dir, name, f'{str(step).zfill(6)}_{subscript}.jpg')
         else:
-            path = os.path.join(self.logger.log_dir, name, f'{step:04d}.jpg')
+            path = os.path.join(self.logger.log_dir, name, f'{str(step).zfill(6)}.jpg')
         os.makedirs(os.path.dirname(path), exist_ok=True)
         fig.savefig(path)
         plt.close(fig)
@@ -367,8 +352,9 @@ class Coach:
         }
         if self.opts.adv_lambda > 0:  ##### modified
             save_dict['discriminator'] = self.discriminator.state_dict()
-        return save_dict
-    
+        return save_dict             
+            
+
     ##### modified
     @staticmethod
     def discriminator_loss(real_pred, fake_pred, loss_dict):
@@ -436,13 +422,33 @@ class Coach:
             loss_dict['loss_d'] = float(loss)
             loss = loss * self.opts.adv_lambda 
             return loss_dict
-        
+       
+
+def test():
+    ckpt = torch.load('/ssd/gregory/smile/psp_weight/checkpoints/iteration_90000.pt')
+    opts = MyObject(ckpt['opts'])
+    print(ckpt['opts'])
+    net = pSp(opts=opts).cuda().load_state_dict(ckpt['state_dict']).eval()
+    test_loader = DataLoader(RenderDataset('test'),
+                                    batch_size=opts.test_batch_size,
+                                    shuffle=False,
+                                    num_workers=int(opts.test_workers),
+                                    drop_last=True)
+    for batch_idx, batch in enumerate(test_loader):
+        x2, y, x1 = batch['cond'], batch['images'], batch['input']
+
+        with torch.no_grad():
+            x2 = x2.cuda()
+            x1 = x1.cuda()
+
+            y_hat, latent = net.forward(x1=x1, x2=x2, resize=(x1.shape[2:]==y.shape[2:]), zero_noise=opts.zero_noise, use_feature=opts.use_feature,
+                                                    first_layer_feature_ind=opts.feat_ind, use_skip=opts.use_skip, return_latents=True)      
 if __name__=='__main__':
     opts = ArgumentParser()
-    opts.add_argument('--exp_dir', default='/ssd/gregory/smile/psp_weight/',type=str, help='Path to experiment output directory')
+    opts.add_argument('--exp_dir', default='/ssd/gregory/smile/iortho/',type=str, help='Path to experiment output directory')
     opts.add_argument('--dataset_type', default='ffhq_sketch_to_face', type=str, help='Type of dataset/experiment to run')
     opts.add_argument('--encoder_type', default='GradualStyleEncoder', type=str, help='Which encoder to use') 
-    opts.add_argument('--input_nc', default=3, type=int, help='Number of input image channels to the psp encoder')
+    opts.add_argument('--input_nc', default=2, type=int, help='Number of input image channels to the psp encoder')
     opts.add_argument('--label_nc', default=0, type=int, help='Number of input label channels to the psp encoder')
     opts.add_argument('--output_size', default=1024, type=int, help='Output size of generator')
 
@@ -450,6 +456,7 @@ if __name__=='__main__':
     opts.add_argument('--feat_ind', default=0, type=int, help='Layer index of G to accept the first-layer feature')
     opts.add_argument('--max_pooling', action="store_true", help='Apply max pooling or average pooling')
     opts.add_argument('--use_skip', default=True, help='Using skip connection from the encoder to the styleconv layers of G')
+    opts.add_argument('--use_feature', default=True, help='Using skip connection from the encoder to the styleconv layers of G')
     opts.add_argument('--use_skip_torgb', default=False, help='Using skip connection from the encoder to the toRGB layers of G.')
     opts.add_argument('--skip_max_layer', default=7, type=int, help='Layer used for skip connection. 1,2,3,4,5,6,7 correspond to 4,8,16,32,64,128,256')
     opts.add_argument('--crop_face', action="store_true", help='Use aligned cropped face to predict style latent code w+')
@@ -471,38 +478,38 @@ if __name__=='__main__':
     opts.add_argument('--zero_noise', action="store_true", help='Whether using zero noises')
     opts.add_argument('--direction_path', type=str, default=None, help='Path to the direction vector to augment generated data')
 
-    opts.add_argument('--batch_size', default=2, type=int, help='Batch size for training')
-    opts.add_argument('--test_batch_size', default=8, type=int, help='Batch size for testing and inference')
+    opts.add_argument('--batch_size', default=4, type=int, help='Batch size for training')
+    opts.add_argument('--test_batch_size', default=2, type=int, help='Batch size for testing and inference')
     opts.add_argument('--workers', default=4, type=int, help='Number of train dataloader workers')
     opts.add_argument('--test_workers', default=8, type=int, help='Number of test/inference dataloader workers')
 
     opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
-    opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
-    opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
-    opts.add_argument('--start_from_latent_avg', action='store_true', help='Whether to add average latent vector to generate codes from encoder.')
+    opts.add_argument('--optim_name', default='ranger', type=str, help='Which optimizer to use')
+    opts.add_argument('--train_decoder', default=True, type=bool, help='Whether to train the decoder model')
+    opts.add_argument('--start_from_latent_avg', default=False, help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
-    opts.add_argument('--lpips_lambda', default=0.8, type=float, help='LPIPS loss multiplier factor')
+    opts.add_argument('--lpips_lambda', default=0.005, type=float, help='LPIPS loss multiplier factor')
     opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
-    opts.add_argument('--l2_lambda', default=1, type=float, help='L2 loss multiplier factor')
+    opts.add_argument('--l2_lambda', default=0, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')
     opts.add_argument('--moco_lambda', default=0, type=float, help='Moco-based feature similarity loss multiplier factor')
-    opts.add_argument('--adv_lambda', default=0, type=float, help='Adversarial loss multiplier factor')
+    opts.add_argument('--adv_lambda', default=1, type=float, help='Adversarial loss multiplier factor')
     opts.add_argument('--d_reg_every', default=16, type=int, help='Interval of the applying r1 regularization')
     opts.add_argument('--r1', default=1, type=float, help="weight of the r1 regularization")
     opts.add_argument('--tmp_lambda', default=0, type=float, help='Temporal loss multiplier factor')
 
     opts.add_argument('--stylegan_weights', default='/ssd/gregory/smile/ori_style/checkpoint/150000.pt', type=str, help='Path to StyleGAN model weights')
-    # opts.add_argument('--decoder_path', default='/mnt/e/share/model000500000.pt', type=str, help='Path to pSp model checkpoint')
+    # opts.add_argument('--decoder_path', default='/ssd/gregory/smile/ori_style/checkpoint/150000.pt', type=str, help='Path to pSp model checkpoint')
     # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
-    opts.add_argument('--max_steps', default=500000, type=int, help='Maximum number of training steps')
+    opts.add_argument('--max_steps', default=250000, type=int, help='Maximum number of training steps')
     opts.add_argument('--image_interval', default=100, type=int, help='Interval for logging train images during training')
     opts.add_argument('--board_interval', default=50, type=int, help='Interval for logging metrics to tensorboard')
     opts.add_argument('--val_interval', default=1000, type=int, help='Validation interval')
-    opts.add_argument('--save_interval', default=None, type=int, help='Model checkpoint interval')
+    opts.add_argument('--save_interval', default=10000, type=int, help='Model checkpoint interval')
 
     # arguments for weights & biases support
     opts.add_argument('--use_wandb', action="store_true", help='Whether to use Weights & Biases to track experiment.')
@@ -511,3 +518,4 @@ if __name__=='__main__':
     print(args)
     coach = Coach(args)
     coach.train()
+    # test()

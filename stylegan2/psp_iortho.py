@@ -19,7 +19,8 @@ class pSp(nn.Module):
         # compute number of style inputs based on the output resolution
         self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
-        self.encoder = psp_encoders.GradualStyleEncoder(50, 'ir_se', input_nc=opts.input_nc, use_skip=opts.use_skip)
+        self.encoder1 = psp_encoders.GradualStyleEncoder(50, 'ir_se', input_nc=opts.input_nc, use_skip=opts.use_skip)
+        self.encoder2 = psp_encoders.GradualStyleEncoder(50, 'ir_se', input_nc=opts.input_nc, use_skip=opts.use_skip)
         self.decoder = Generator(256, 512, 8)
         if opts.stylegan_weights is not None:
             ckpt = torch.load(opts.stylegan_weights, map_location='cpu')
@@ -27,6 +28,7 @@ class pSp(nn.Module):
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         self.latent_avg = None
         self.start_from_latent_avg = opts.start_from_latent_avg
+        print('using psp iortho')
     # x1: image for first-layer feature f. 
     # x2: image for style latent code w+. If not specified, x2=x1.
     # inject_latent: for sketch/mask-to-face translation, another latent code to fuse with w+
@@ -41,9 +43,9 @@ class pSp(nn.Module):
                 first_layer_feature_ind=0, use_skip=False, zero_noise=False, editing_w=None): ##### modified
         
         feats = None # f and the skipped encoder features
-        codes, feats = self.encoder(x1, return_feat=True, return_full=use_skip) ##### modified
-        if x2 is not None: ##### modified
-            codes = self.encoder(x2) ##### modified
+        codes, feats = self.encoder1(x1, return_feat=True, return_full=use_skip) ##### modified
+
+        codes, feats2 = self.encoder2(x2, return_feat=True, return_full=use_skip) ##### modified
 
         # E_W^{1:7}(T(x1)) concatenate E_W^{8:18}(w~)
         if latent_mask is not None:
@@ -59,10 +61,10 @@ class pSp(nn.Module):
             codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)   
         first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            
         if use_feature: ##### modified
-            first_layer_feats = feats[0:2] # use f
+            first_layer_feats = feats[0:2]+feats2[0:2] # use f
         if use_skip: ##### modified
             skip_layer_feats = feats[2:] # use skipped encoder feature
-            fusion = self.encoder.fusion # use fusion layer to fuse encoder feature and decoder feature.
+            fusion = self.encoder1.fusion # use fusion layer to fuse encoder feature and decoder feature.
             
         images, result_latent = self.decoder([codes],
                                              input_is_latent=True,

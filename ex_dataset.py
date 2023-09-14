@@ -68,8 +68,8 @@ class RandomPerspective:
 
 class ImagesDataset(Dataset):
     def __init__(self, mode='train'):
-        # self.path = '/ssd/gregory/smile/out/'
-        self.path = '/mnt/d/data/smile/out'
+        self.path = '/ssd/gregory/smile/YangNew/'
+        # self.path = '/mnt/d/data/smile/out'
         self.all_files = []
         if mode=='train':
             for folder in os.listdir(self.path)[5:]:
@@ -83,28 +83,31 @@ class ImagesDataset(Dataset):
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
-        self.trans = RandomPerspective(degrees=5.0, translate=0.1, scale=0.1, shear=0.1)
+        self.trans = RandomPerspective(degrees=0.0, translate=0, scale=0.0)
     
     def __len__(self):
         return len(self.all_files)
     
     def __getitem__(self, index):
         img_folder = self.all_files[index]
-        img = cv2.imread(os.path.join(img_folder, 'mouth.png'))
-        mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
-        teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
-        edge = cv2.imread(os.path.join(img_folder, 'edge.png'))
+        img = cv2.imread(os.path.join(img_folder, 'Img.jpg'))
+        mask = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
+        # teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
+        edge = cv2.imread(os.path.join(img_folder, 'TeethEdge.png'))
         
         
         im = self.preprocess(img)
         mk = self.preprocess(mask)
-        teeth_3d = self.preprocess(teeth_3d)
+        # teeth_3d = self.preprocess(teeth_3d)
         ed = self.preprocess(edge)
         
-        input = ed*mk+im*(1-mk)
-        img[mask==0]=0
-        cond = self.preprocess(self.trans(img))
-        
+        input = np.zeros((5,256,256))
+        cond = self.trans(img)
+        cond[mask==0]=0
+        cond = self.preprocess(cond)
+        input[0]=mk[0]
+        input[1]=ed[0]
+        input[-3:]=im
         return {'images': im, 'input':input, 'cond':cond}
         
     def preprocess(self, img):

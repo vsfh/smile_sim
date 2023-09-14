@@ -52,7 +52,7 @@ def get_colors():
 def vis_faces(log_hooks):
 	display_count = len(log_hooks)
 	fig = plt.figure(figsize=(8, 4 * display_count))
-	gs = fig.add_gridspec(display_count, 3)
+	gs = fig.add_gridspec(display_count, 4)
 	for i in range(display_count):
 		hooks_dict = log_hooks[i]
 		fig.add_subplot(gs[i, 0])
@@ -77,11 +77,14 @@ def vis_faces_with_id(hooks_dict, fig, gs, i):
 
 
 def vis_faces_no_id(hooks_dict, fig, gs, i):
+	plt.imshow(hooks_dict['cond_face'], cmap="gray")
+	plt.title('cond')
+	fig.add_subplot(gs[i, 1])
 	plt.imshow(hooks_dict['input_face'], cmap="gray")
 	plt.title('Input')
-	fig.add_subplot(gs[i, 1])
+	fig.add_subplot(gs[i, 2])
 	plt.imshow(hooks_dict['target_face'])
 	plt.title('Target')
-	fig.add_subplot(gs[i, 2])
+	fig.add_subplot(gs[i, 3])
 	plt.imshow(hooks_dict['output_face'])
 	plt.title('Output')
