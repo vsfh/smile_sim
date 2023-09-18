@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import cv2
-import pyutils
+import smile_utils
 from pytorch3d.transforms.rotation_conversions import *
+import natsort
 
 import time
 from pytorch3d.structures import Meshes, join_meshes_as_scene, join_meshes_as_batch
@@ -51,10 +52,10 @@ def _seg_tid(image):
 def _find_objs(image):
     yolo_input_shape = (640, 640)
     original_h, original_w = image.shape[:2]
-    resized_image, meta = pyutils.resize_and_pad(image, yolo_input_shape)
+    resized_image, meta = smile_utils.resize_and_pad(image, yolo_input_shape)
     offsets = meta['offsets']
     scale = meta['scale']
-    input_imgs = pyutils.normalize_img(resized_image)
+    input_imgs = smile_utils.normalize_img(resized_image)
     output = onnx_infer([input_imgs],'smile_sim_lip_preserve-yolov5', )
     output = output[0]
     xywh = output[:, :4]
@@ -78,18 +79,18 @@ def _find_objs(image):
         coords[[1, 3]] -= offsets[1]
         coords /= scale
 
-        coords = pyutils.loose_bbox(coords, (original_w, original_h))
+        coords = smile_utils.loose_bbox(coords, (original_w, original_h))
         objs.append(coords)
     objs = np.array(objs, dtype=int)
     return objs
 
 def _seg_mouth(image):
     seg_input_shape = (256, 256)
-    resized_image, _ = pyutils.resize_and_pad(image, seg_input_shape)
-    input_imgs = pyutils.normalize_img(resized_image)
+    resized_image, _ = smile_utils.resize_and_pad(image, seg_input_shape)
+    input_imgs = smile_utils.normalize_img(resized_image)
     output = onnx_infer([input_imgs], 'smile_sim_lip_preserve-edge_net')
     output = np.transpose(output[0], (1, 2, 0))
-    output = pyutils.sigmoid(output)
+    output = smile_utils.sigmoid(output)
     return output
 
 def apply_style(img, mean, std, mask=None, depth=None):
@@ -118,7 +119,8 @@ def apply_style(img, mean, std, mask=None, depth=None):
 
     return result
 
-def detection_and_segmentation(face_img):
+res_list = ['mouth_mask', 'edge', 'down_edge', 'upper_edge', 'teeth_mask']
+def detection_and_segmentation(face_img, save_path=None):
     height, width = face_img.shape[:2]
 
     # step 1. find mouth obj
@@ -137,7 +139,7 @@ def detection_and_segmentation(face_img):
 
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     x1, y1, x2, y2 = cx - half, cy - half, cx + half, cy + half
-    x1, y1, x2, y2 = pyutils.loose_bbox([x1, y1, x2, y2], (width, height))
+    x1, y1, x2, y2 = smile_utils.loose_bbox([x1, y1, x2, y2], (width, height))
     x, y = int(x1 * 128 / half), int(y1 * 128 / half) + 2
 
     template = cv2.resize(face_img, (int(width * 128 / half), int(height * 128 / half)), cv2.INTER_AREA)
@@ -152,8 +154,12 @@ def detection_and_segmentation(face_img):
     teeth_mask = (seg_result[..., 4] > 0.6).astype(np.uint8)
     edge = (seg_result[..., 1] > 0.6).astype(np.float32)
     up_edge = (seg_result[..., 3] > 0.6).astype(np.float32)
-    # for i in range(seg_result.shape[-1]):
-    #     a = (seg_result[..., i] > 0.6).astype(np.uint8)
+    if save_path is not None:
+        for i in range(seg_result.shape[-1]):
+            a = (seg_result[..., i] > 0.6).astype(np.uint8)
+            cv2.imwrite(os.path.join(save_path, f'{res_list[i]}.png'), 255*a)
+        cv2.imwrite(os.path.join(save_path, f'smile.png'), mouth[...,::-1])
+        
     #     cv2.imshow('img', a*255)
     #     cv2.waitKey(0)
     
@@ -184,7 +190,7 @@ def detection_and_segmentation(face_img):
             }
 
 
-def fitting(seg_res, tooth_dict, step_list, device='cpu'):
+def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
     class SoftEdgeShader(nn.Module):
         def __init__(self, device="cpu", blend_params=None, zfar=200, znear=1):
             super().__init__()
@@ -212,8 +218,6 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
             
             for i in range(len(prob_map)):
                 prob_map[i] = prob_map[i]*(zbuf_mask[0]==i+1)
-            
-            
             return prob_map, 0
 
     class EdgeShader(nn.Module):
@@ -308,18 +312,18 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
                       
             im = image.view(image.shape[0],1,*image.shape[1:3])
             
-            im = pyutils.erode(pyutils.dilate(im))
-            im = pyutils.dilate(im-pyutils.erode(im))
+            im = smile_utils.erode(smile_utils.dilate(im))
+            im = smile_utils.dilate(im-smile_utils.erode(im))
             im = torch.sum(im, 0).clip(0,1)
             
-            label = pyutils.dilate(self.image_ref[None])
-            pred = pyutils.dilate(im)
+            label = smile_utils.dilate(self.image_ref[None])
+            pred = smile_utils.dilate(im)
 
             loss = torch.sum(((pred - label)) ** 2)
             return loss, im, R, T, down_offset
     
     step1 = step_list['step_0']
-    teeth = pyutils.load_teeth(tooth_dict, type='tooth', half=True, sample=True, voxel_size=0.8)
+    teeth = smile_utils.load_teeth(tooth_dict, type='tooth', half=True, sample=True, voxel_size=1.0)
     
     mouth_mask = seg_res['mouth_mask']
     teeth_mask = seg_res['teeth_mask']
@@ -336,10 +340,10 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
     visible_area = mouth_mask
 
     image_ref = seg_res['edge']
-    up_mesh = pyutils.apply_step(teeth, step1, mode='up', add=False, num_teeth=3)
-    up_tensor = pyutils.meshes_to_tensor(up_mesh, device=device)
-    down_mesh = pyutils.apply_step(teeth, step1, mode='down', add=False, num_teeth=3)
-    down_tensor = pyutils.meshes_to_tensor(down_mesh, device=device)
+    up_mesh = smile_utils.apply_step(teeth, step1, mode='up', add=False, num_teeth=3)
+    up_tensor = smile_utils.meshes_to_tensor(up_mesh, device=device)
+    down_mesh = smile_utils.apply_step(teeth, step1, mode='down', add=False, num_teeth=3)
+    down_tensor = smile_utils.meshes_to_tensor(down_mesh, device=device)
     up_bbox = up_mesh[0].get_axis_aligned_bounding_box()
     ref_y, ref_z = up_bbox.min_bound[1], up_bbox.max_bound[2]
     ref = -ref_y * np.sin(np.deg2rad(10)) + ref_z * np.cos(np.deg2rad(10))
@@ -419,10 +423,12 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
             break
         loss.backward()
         optimizer.step()
+    if save_path is not None:
+        torch.save(best_opts, os.path.join(save_path, 'para.pt'))
     # imageio.mimsave('optimization.gif', gif_images, duration=100)
     # print(loss.item())
-    if loss.item()>1200 or up_mask.sum()<1200:
-        return 0,0,0,False
+    # if loss.item()>1200 or up_mask.sum()<1200:
+    return 0,0,0,False
     opt_cameras = PerspectiveCameras(device=device, focal_length=best_opts['focal_length'])
     lights = PointLights(device=device, ambient_color=((0.9, 0.9, 0.9),), location=[[2.0, -60.0, -12.0]])
     edge_renderer = MeshRenderer(
@@ -448,10 +454,10 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
         step_array = step_list[step_idx]
         # step = utils.load_step_file(step_array)
         step = step_array
-        up_mesh = pyutils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
-        up_tensor = pyutils.meshes_to_tensor(up_mesh,'scene', device=device)
-        down_mesh = pyutils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
-        down_tensor = pyutils.meshes_to_tensor(down_mesh,'scene', device=device)
+        up_mesh = smile_utils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
+        up_tensor = smile_utils.meshes_to_tensor(up_mesh,'scene', device=device)
+        down_mesh = smile_utils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
+        down_tensor = smile_utils.meshes_to_tensor(down_mesh,'scene', device=device)
 
         mid = len(up_mesh)
 
@@ -471,6 +477,10 @@ def fitting(seg_res, tooth_dict, step_list, device='cpu'):
         
         # id_dict[step_idx] = down_edge
     return edge_dict, depth_dict, id_dict, True
+
+def render(params, tooth_dict, step_list, **kwargs):
+    teeth_mask = kwargs['teeth_mask']
+    return
 
 def _gan(inputs, network_name, tinf=None):
     output = onnx_infer(inputs, network_name, )
@@ -523,7 +533,7 @@ def smile_generation_based_on_edge(seg_res, edge_list, depth_dict, id_dict):
 
         cond = edge*mask*0.1 + up_edge*mask*0.5 + tmask*mask*(1-edge) + mouth_img*(1-mask)
         network_name = 'smile_sim_lip_preserve-up_net'
-        aligned_mouth = _gan([pyutils.normalize_img(cond)], network_name, )
+        aligned_mouth = _gan([smile_utils.normalize_img(cond)], network_name, )
         aligned_mouth = aligned_mouth.clip(0,1)*255
         aligned_mouth = aligned_mouth.astype(np.uint8)
         
@@ -545,9 +555,9 @@ def blend_images(image_a, image_b, opacity):
 class predictor(object):
     def __init__(self) -> None:
         pass
-    def predict(self, face_img: np.array, tooth_dict, step_list):
-        seg_res = detection_and_segmentation(face_img)
-        edge_dict, depth_dict, id_dict, yep = fitting(seg_res, tooth_dict, step_list, device='cuda')
+    def predict(self, face_img: np.array, tooth_dict, step_list, save_path=None):
+        seg_res = detection_and_segmentation(face_img, save_path)
+        edge_dict, depth_dict, id_dict, yep = fitting(seg_res, tooth_dict, step_list, save_path, device='cuda')
         if not yep:
             return None
         a = depth_dict['step_0']
@@ -567,26 +577,14 @@ class predictor(object):
 def visualize_teeth(face_img, tooth_dict, step_list):
     import trimesh
     seg_res = detection_and_segmentation(face_img)
-    step1 = pyutils.load_step_file(step_list['step_0'])
+    step1 = smile_utils.load_step_file(step_list['step_0'])
     upper_lower = seg_res['upper_lower']
-    up_mesh = pyutils.trimesh_load_apply(tooth_dict, step1)
+    up_mesh = smile_utils.trimesh_load_apply(tooth_dict, step1)
     up_mesh[11].show()
-import natsort
+
+
 def test():
-    smile = predictor()
-    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
-    with open('/mnt/d/data/smile/error.txt', 'r') as f:
-        error_list = [line.strip() for line in f.readlines()]
-    for case in tqdm(natsort.natsorted(os.listdir(path)[830:])):
-        # case = 'C01002721541'
-        # case = '0b01e19ba8f3daa5aed0653dd253a78e'
-        img_folder = os.path.join(path,case)
-        if not os.path.exists(os.path.join(img_folder, '微笑像.jpg')) or case in error_list:
-            continue
-        try:
-            face_img = np.array(Image.open(os.path.join(img_folder, '微笑像.jpg')))
-        except:
-            print('img', case)
+    def load_teeth_step(img_folder):
         tooth_dict = {int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'models', '*._Root.stl'))}
         steps_dict = {}
         step_one_dict = {}
@@ -598,20 +596,37 @@ def test():
             trans[:3,:3] = R.from_quat(arr[-4:]).as_matrix()
             step_one_dict[str(int(arr[0]))] = trans
         steps_dict['step_0'] = step_one_dict
+        return steps_dict, tooth_dict
+    smile = predictor()
+    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
+    with open('/mnt/d/data/smile/error.txt', 'r') as f:
+        error_list = [line.strip() for line in f.readlines()]
+    for case in tqdm(natsort.natsorted(os.listdir(path)[:3000])):
+        # case = 'C01002721541'
+        # case = '0b01e19ba8f3daa5aed0653dd253a78e'
+        img_folder = os.path.join(path,case)
+        if not os.path.exists(os.path.join(img_folder, '微笑像.jpg')) or case in error_list:
+            continue
         try:
-            res = smile.predict(face_img, tooth_dict, steps_dict)
+            face_img = np.array(Image.open(os.path.join(img_folder, '微笑像.jpg')))
+        except:
+            print('img', case)
+
+        steps_dict, tooth_dict = load_teeth_step(img_folder)
+        save_path = os.path.join('/mnt/d/data/smile/out',case)
+        os.makedirs(save_path, exist_ok=True)
+        try:
+            res = smile.predict(face_img, tooth_dict, steps_dict, save_path)
             if res is None:
                 continue
-            a,b,c,d,e,f = res
-            save_path = os.path.join('/mnt/d/data/smile/out',case)
-            os.makedirs(save_path, exist_ok=True)
-            cv2.imwrite(os.path.join(save_path, 'teeth_3d.png'), a)
-            cv2.imwrite(os.path.join(save_path, 'mouth.png'), b)
-            cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
-            cv2.imwrite(os.path.join('/mnt/d/data/smile/show', f'{case}.png'), d)
-            cv2.imwrite(os.path.join(save_path, 'edge.png'), e*255)
-            cv2.imwrite(os.path.join(save_path, 'up_edge.png'), f*255)
-            # break  
+        # a,b,c,d,e,f = res
+        # cv2.imwrite(os.path.join(save_path, 'teeth_3d.png'), a)
+        # cv2.imwrite(os.path.join(save_path, 'mouth.png'), b)
+        # cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
+        # cv2.imwrite(os.path.join('/mnt/d/data/smile/show', f'{case}.png'), d)
+        # cv2.imwrite(os.path.join(save_path, 'edge.png'), e*255)
+        # cv2.imwrite(os.path.join(save_path, 'up_edge.png'), f*255)
+        # break  
         except:
             print(case)
 
@@ -648,4 +663,5 @@ def test_single():
     # cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
     # cv2.imwrite(os.path.join(save_path, 'blend.png'), d)
 if __name__=="__main__":
-    test()    
+    teeth_mask = {'teeth_mask':cv2.imread('/mnt/d/data/smile/out/C01002721158/smile.png')}
+    render(0,0,0,teeth_mask=teeth_mask)    

@@ -39,7 +39,15 @@ class YangOldNew(Dataset):
         img_folder = self.all_files[index]
         img = cv2.imread(os.path.join(img_folder, 'Img.jpg'))
         im = self.preprocess(img)
-        return {'images': im}
+        
+        cond = np.zeros((3,256,256))
+        ed = cv2.imread(os.path.join(img_folder, 'TeethEdgeDown.png'))
+        cond[0] = self.preprocess(ed)[0]
+        eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
+        cond[1] = self.preprocess(eu)[0]
+        mk = cv2.imread(os.path.join(img_folder, 'TeethMasks.png'))
+        cond[2] = self.preprocess(mk)[0]
+        return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
         # teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))

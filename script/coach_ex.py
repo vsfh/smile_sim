@@ -16,7 +16,7 @@ import numpy as np
 
 from utils import common, train_utils
 from criteria import id_loss, w_norm
-from ex_dataset import ImagesDataset
+from ex_dataset import ImagesDataset, TestDataset
 from criteria.lpips.lpips import LPIPS
 from stylegan2.model import Discriminator ##### modified
 from script.ranger import Ranger
@@ -425,24 +425,37 @@ class Coach:
        
 
 def test():
-    ckpt = torch.load('/ssd/gregory/smile/psp_weight/checkpoints/iteration_90000.pt')
+    import cv2
+    ckpt = torch.load('/mnt/e/paper/smile/weight/iteration_20000.pt')
     opts = MyObject(ckpt['opts'])
+    opts.stylegan_weights = '/mnt/e/paper/smile/weight/ori_style_150000.pt'
+    if opts.l2_lambda!=0:
+        from stylegan2.psp import pSp
+    else:
+        from stylegan2.psp_iortho import pSp
     print(ckpt['opts'])
-    net = pSp(opts=opts).cuda().load_state_dict(ckpt['state_dict']).eval()
-    test_loader = DataLoader(RenderDataset('test'),
-                                    batch_size=opts.test_batch_size,
+    net = pSp(opts=opts).cuda()
+    net.load_state_dict(ckpt['state_dict'])
+    net.eval()
+    test_loader = DataLoader(TestDataset('test'),
+                                    batch_size=1,
                                     shuffle=False,
                                     num_workers=int(opts.test_workers),
                                     drop_last=True)
     for batch_idx, batch in enumerate(test_loader):
-        x2, y, x1 = batch['cond'], batch['images'], batch['input']
+        y, x1 = batch['images'], batch['input']
 
         with torch.no_grad():
-            x2 = x2.cuda()
-            x1 = x1.cuda()
-
-            y_hat, latent = net.forward(x1=x1, x2=x2, resize=(x1.shape[2:]==y.shape[2:]), zero_noise=opts.zero_noise, use_feature=opts.use_feature,
-                                                    first_layer_feature_ind=opts.feat_ind, use_skip=opts.use_skip, return_latents=True)      
+            x1 = x1.cuda().float()
+            y_hat, latent = net.forward(x1=x1[:,:2,:,:], x2=x1[:,-3:,:,:], resize=(x1.shape[2:]==y.shape[2:]), zero_noise=opts.zero_noise, use_feature=opts.use_feature,
+                                                    first_layer_feature_ind=opts.feat_ind, use_skip=opts.use_skip, return_latents=True)   
+        im = y_hat[0].cpu().numpy().clip(0,1)
+        im = im.transpose(1,2,0)*255
+        im = im.astype(np.uint8)[...,::-1]
+        cv2.imwrite(f'/mnt/e/paper/smile/iortho_res/{str(batch_idx).zfill(5)}.png', im)
+        # cv2.imshow('im', im)
+        # cv2.waitKey(0)
+            
 if __name__=='__main__':
     opts = ArgumentParser()
     opts.add_argument('--exp_dir', default='/ssd/gregory/smile/iortho/',type=str, help='Path to experiment output directory')
@@ -515,7 +528,7 @@ if __name__=='__main__':
     opts.add_argument('--use_wandb', action="store_true", help='Whether to use Weights & Biases to track experiment.')
 
     args = opts.parse_args()
-    print(args)
-    coach = Coach(args)
-    coach.train()
-    # test()
+    # print(args)
+    # coach = Coach(args)
+    # coach.train()
+    test()

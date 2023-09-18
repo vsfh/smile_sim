@@ -22,8 +22,8 @@ class Encoder(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
-        if latent<512:
-            channels = {k: v // 2 for k, v in channels.items()}
+        # if latent<512:
+        #     channels = {k: v // 2 for k, v in channels.items()}
         self.channels = channels
 
         convs = [ConvLayer(input_channel, channels[size], 1)]

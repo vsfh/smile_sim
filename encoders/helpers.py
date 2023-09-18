@@ -117,3 +117,19 @@ class bottleneck_IR_SE(Module):
 		shortcut = self.shortcut_layer(x)
 		res = self.res_layer(x)
 		return res + shortcut
+
+class bottleneck_IR_SFH(Module):
+	def __init__(self, in_channel, depth, stride):
+		super(bottleneck_IR_SFH, self).__init__()
+		if in_channel == depth:
+			self.shortcut_layer = MaxPool2d(1, stride)
+		else:
+			self.shortcut_layer = Sequential(
+				Conv2d(in_channel, depth, (1, 1), stride, bias=False),
+				BatchNorm2d(depth)
+			)
+   
+	def forward(self, x):
+		shortcut = self.shortcut_layer(x)
+		return shortcut
+

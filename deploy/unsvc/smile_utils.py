@@ -7,7 +7,6 @@ import torch
 from pytorch3d.structures import Meshes, join_meshes_as_scene, join_meshes_as_batch
 from pytorch3d.renderer import (
     TexturesVertex,
-    TexturesUV
 )
 import torch.nn.functional as F
 
@@ -188,7 +187,7 @@ def load_gum(gum_dict, sample=True, voxel_size=0.2, export=False):
         
     return upper, lower
     
-def load_teeth(teeth_dict, type='tooth', half=True, sample=True, voxel_size=0.4):
+def load_teeth(teeth_dict, type='tooth', half=True, sample=True, voxel_size=1.0):
 
     teeth = {}
     for key, tooth in teeth_dict.items():
