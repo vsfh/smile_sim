@@ -22,8 +22,12 @@ class YangOldNew(Dataset):
     def __init__(self, path, mode='decoder'):
         self.path = path
         self.all_files = []
-        
-        for folder in os.listdir(self.path):
+        if mode=='test':
+            folder_list = os.listdir(self.path)[9:]
+        else:
+            folder_list = os.listdir(self.path)[:-10]
+            
+        for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
             
             # if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
@@ -38,15 +42,20 @@ class YangOldNew(Dataset):
     def __getitem__(self, index):
         img_folder = self.all_files[index]
         img = cv2.imread(os.path.join(img_folder, 'Img.jpg'))
+        img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
         im = self.preprocess(img)
+        cond_im = img.copy()
         
-        cond = np.zeros((3,256,256))
+        
+        cond = np.zeros((9,256,256))
         ed = cv2.imread(os.path.join(img_folder, 'TeethEdgeDown.png'))
         cond[0] = self.preprocess(ed)[0]
         eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
         cond[1] = self.preprocess(eu)[0]
-        mk = cv2.imread(os.path.join(img_folder, 'TeethMasks.png'))
+        mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
+        mk = cv2.dilate(mk, np.ones((3,3)))
         cond[2] = self.preprocess(mk)[0]
+        cond[-3:] = self.preprocess(cond_im)
         return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))

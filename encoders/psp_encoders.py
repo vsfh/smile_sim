@@ -2,14 +2,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import Linear, Conv2d, BatchNorm2d, PReLU, Sequential, Module
+from torch.nn import Linear, Conv2d, BatchNorm2d, PReLU, Sequential, Module, InstanceNorm2d
 import math
 import sys
 sys.path.append('.')
 sys.path.append('..')
 
 from encoders.helpers import get_blocks, Flatten, bottleneck_IR, bottleneck_IR_SE, bottleneck_IR_SFH
-from stylegan2.model import EqualLinear
+from stylegan2.model import EqualLinear, ConvLayer, ResBlock
 
 
 class GradualStyleBlock(Module):
@@ -400,14 +400,14 @@ class LightStyleEncoder(Module):
         if mode == 'ir':
             unit_module = bottleneck_IR
         elif mode == 'ir_se':
-            unit_module = bottleneck_IR_SFH
+            unit_module = bottleneck_IR_SE
         
         # for sketch/mask-to-face translation, add a new network T
         if input_nc != 3:
             self.input_label_layer = ResnetGenerator(input_nc, res_num)
 
         self.input_layer = Sequential(Conv2d(3, 64, (3, 3), 1, 1, bias=False),
-                                      BatchNorm2d(64),
+                                      InstanceNorm2d(64),
                                       PReLU(64))
         modules = []
         for block in blocks:
@@ -541,6 +541,65 @@ class LightStyleEncoder(Module):
                 c2 = x
                 break
         return self.featlayer(torch.cat((c21, c22, c2), dim=1))
+
+class Encoder(nn.Module):
+    def __init__(self, size, input_channel, latent=512, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
+        super().__init__()
+
+        channels = {
+            4: 512,
+            8: 512,
+            16: 512,
+            32: 512,
+            64: 256 * channel_multiplier,
+            128: 128 * channel_multiplier,
+            256: 64 * channel_multiplier,
+            512: 32 * channel_multiplier,
+            1024: 16 * channel_multiplier,
+        }
+        # if latent<512:
+        #     channels = {k: v // 2 for k, v in channels.items()}
+        self.channels = channels
+
+        convs = [ConvLayer(input_channel, channels[size], 1)]
+
+        log_size = int(math.log(size, 2))
+
+        in_channel = channels[size]
+
+        for i in range(log_size, 2, -1):
+            out_channel = channels[2 ** (i - 1)]
+
+            convs.append(ResBlock(in_channel, out_channel, blur_kernel))
+
+            in_channel = out_channel
+
+        for i in range(len(convs)):
+            self.add_module(f'layer{i + 1}', convs[i])
+
+    def forward(self, input):
+        features = []
+        x = self.layer1(input)
+        # features.append(x)
+
+        x = self.layer2(x)
+        features.append(x)
+
+        x = self.layer3(x)
+        features.append(x)
+
+        x = self.layer4(x)
+        features.append(x)
+
+        x = self.layer5(x)
+        features.append(x)
+
+        x = self.layer6(x)
+        features.append(x)
+
+        x = self.layer7(x)
+        features.append(x)
+        return features
 if __name__=='__main__':
     encoder = LightStyleEncoder(50, 'ir_se')
     # a = encoder(torch.randn(1,3,256,256))

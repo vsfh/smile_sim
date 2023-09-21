@@ -8,7 +8,7 @@ import sys
 sys.path.append('.')
 sys.path.append('..')
 from stylegan2.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
-from encoders.psp_encoders import LightStyleEncoder
+from encoders.psp_encoders import LightStyleEncoder, GradualStyleEncoder
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -644,8 +644,9 @@ class pSp(nn.Module):
         # compute number of style inputs based on the output resolution
         self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
-        self.encoder = LightStyleEncoder(50, 'ir_se', use_skip=True)
+        self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True)
         self.decoder = Generator(256, 512, 8)
+        self.decoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
 
     def forward(
@@ -667,7 +668,9 @@ class pSp(nn.Module):
             zero_noise = False,   ##### modified
             editing_w = None,   ##### modified
     ):
-        feats = self.encoder(cond_img, input_edge=True) ##### modified
+        # code = self.encoder(cond_img[:,-3:,:,:],return_feat=False, return_full=True) ##### modified
+        _, feats = self.encoder(cond_img[:,:3,:,:], return_feat=True, return_full=True) ##### modified
+        
         first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            
 
         first_layer_feats = feats[0:2] # use f
@@ -675,12 +678,13 @@ class pSp(nn.Module):
         if fusion_block is None:
             fusion_block = self.encoder.fusion # use fusion layer to fuse encoder feature and decoder feature.
         images, result_latent = self.decoder(styles,
+                                            #  input_is_latent = True,
                                              return_latents=return_latents,
                                              first_layer_feature=first_layer_feats,
                                              first_layer_feature_ind=first_layer_feature_ind,
                                              skip_layer_feature=skip_layer_feats,
                                              fusion_block=fusion_block) ##### modified
-
+        images = images*cond_img[:,2:3,:,:]+cond_img[:,-3:,:,:]*(1-cond_img[:,2:3,:,:])
         if return_latents:
             return images, result_latent
         else:

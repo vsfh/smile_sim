@@ -126,10 +126,16 @@ class bottleneck_IR_SFH(Module):
 		else:
 			self.shortcut_layer = Sequential(
 				Conv2d(in_channel, depth, (1, 1), stride, bias=False),
-				BatchNorm2d(depth)
 			)
-   
+		self.res_layer = Sequential(
+			Conv2d(in_channel, depth, (3, 3), (1, 1), 1, bias=False),
+			PReLU(depth),
+			Conv2d(depth, depth, (3, 3), stride, 1, bias=False),
+			SEModule(depth, 16)
+		)
+
 	def forward(self, x):
 		shortcut = self.shortcut_layer(x)
-		return shortcut
+		res = self.res_layer(x)
+		return res + shortcut
 
