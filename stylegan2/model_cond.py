@@ -659,7 +659,7 @@ class pSp(nn.Module):
 
     ):
         if styles is None:
-            styles = [self.encoder(cond_img[:,-3:,:,:],return_feat=False, return_full=True)] ##### modified
+            styles = [self.encoder(cond_img[:,-3:,:,:]*cond_img[:,2:3,:,:],return_feat=False, return_full=True)] ##### modified
         _, feats = self.encoder(cond_img[:,:3,:,:], return_feat=True, return_full=True) ##### modified
         
         first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            

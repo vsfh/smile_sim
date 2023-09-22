@@ -55,6 +55,7 @@ class YangOldNew(Dataset):
         mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
         mk = cv2.dilate(mk, np.ones((3,3)))
         cond[2] = self.preprocess(mk)[0]
+        
         cond[-3:] = self.preprocess(cond_im)
         return {'images': im, 'cond':cond}
 
