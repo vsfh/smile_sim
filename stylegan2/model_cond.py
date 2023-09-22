@@ -651,24 +651,15 @@ class pSp(nn.Module):
 
     def forward(
             self,
-            styles,
             cond_img,
+            styles=None,
             return_latents=False,
-            return_features=False,
-            inject_index=None,
-            truncation=1,
-            truncation_latent=None,
-            input_is_latent=False,
-            noise=None,
-            randomize_noise=True,
-            first_layer_feature = None, ##### modified
             first_layer_feature_ind = 0,  ##### modified
-            skip_layer_feature = None,   ##### modified
             fusion_block = None,   ##### modified
-            zero_noise = False,   ##### modified
-            editing_w = None,   ##### modified
+
     ):
-        # code = self.encoder(cond_img[:,-3:,:,:],return_feat=False, return_full=True) ##### modified
+        if styles is None:
+            styles = [self.encoder(cond_img[:,-3:,:,:],return_feat=False, return_full=True)] ##### modified
         _, feats = self.encoder(cond_img[:,:3,:,:], return_feat=True, return_full=True) ##### modified
         
         first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            

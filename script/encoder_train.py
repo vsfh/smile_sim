@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import numpy as np
-
+from accelerate import Accelerator
 from utils import common, train_utils
 from criteria import id_loss, w_norm
 # from ex_dataset import ImagesDataset, TestDataset
@@ -32,27 +32,30 @@ class Coach:
         self.opts = opts
         self.global_step = 0
 
+        log_dir = os.path.join(opts.exp_dir, 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        self.logger = SummaryWriter(log_dir=log_dir)
+        
         self.device = 'cuda:0'  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
         self.opts.device = self.device
         # Initialize network
         if network=='unet':
-            from stylegan2.unet import unet
-            self.net = unet().to(self.device)
+            from stylegan2.psp import pSp
         else:
             from stylegan2.psp_iortho import pSp
-            self.net = pSp(self.opts).to(self.device)
+        net = pSp(self.opts).to(self.device)
         if self.opts.adv_lambda > 0:  ##### modified, add discriminator
-            self.discriminator = Discriminator(256, channel_multiplier=2)
+            discriminator = Discriminator(256, channel_multiplier=2)
             if self.opts.stylegan_weights is not None:
                 ckpt = torch.load(self.opts.stylegan_weights, map_location='cpu')
-                self.discriminator.load_state_dict(ckpt['d'], strict=False)
-            self.discriminator = self.discriminator.to(self.device)
-            self.discriminator_optimizer = torch.optim.Adam(list(self.discriminator.parameters()),
+                discriminator.load_state_dict(ckpt['d'], strict=False)
+            discriminator = discriminator.to(self.device)
+            discriminator_optimizer = torch.optim.Adam(list(discriminator.parameters()),
                                                             lr=self.opts.learning_rate)
             
         # Estimate latent_avg via dense sampling if latent_avg is not available
-        if self.net.latent_avg is None:
-            self.net.latent_avg = self.net.decoder.mean_latent(int(1e5))[0].detach()
+        if net.latent_avg is None:
+            net.latent_avg = net.decoder.mean_latent(int(1e5))[0].detach()
 
         # Initialize loss
         if self.opts.id_lambda > 0 and self.opts.moco_lambda > 0:
@@ -67,16 +70,16 @@ class Coach:
             self.w_norm_loss = w_norm.WNormLoss(start_from_latent_avg=self.opts.start_from_latent_avg)
             
         # Initialize optimizer
-        self.optimizer = self.configure_optimizers()
+        optimizer = self.configure_optimizers(net)
 
         # Initialize dataset
         self.train_dataset, self.test_dataset = self.configure_datasets()
-        self.train_dataloader = DataLoader(self.train_dataset,
+        train_dataloader = DataLoader(self.train_dataset,
                                            batch_size=self.opts.batch_size,
                                            shuffle=True,
                                            num_workers=int(self.opts.workers),
                                            drop_last=True)
-        self.test_dataloader = DataLoader(self.test_dataset,
+        test_dataloader = DataLoader(self.test_dataset,
                                           batch_size=self.opts.test_batch_size,
                                           shuffle=False,
                                           num_workers=int(self.opts.test_workers),
@@ -90,7 +93,18 @@ class Coach:
         self.latent_mask = None
         self.editing_w = None
         self.directions = None
+        
 
+        self.accelerator = Accelerator()
+        optimizer, net, train_dataloader, test_dataloader = self.accelerator.prepare(optimizer, net, train_dataloader, test_dataloader)
+        self.optimizer = optimizer
+        self.net = net
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
+        if self.opts.adv_lambda > 0:  ##### modified, add discriminator
+            discriminator, discriminator_optimizer = self.accelerator.prepare(discriminator, discriminator_optimizer)
+            self.discriminator = discriminator
+            self.discriminator_optimizer = discriminator_optimizer
         
     def train(self):
         self.net.train()
@@ -103,8 +117,8 @@ class Coach:
                 cond_img = batch['cond'].to(self.device).float()
                 real_img = batch['images'].to(self.device).float()
 
-                with torch.no_grad():
-                    y_hat, latent = self.net.forward(x1=cond_img[:,:3,:,:], x2=cond_img[:,-3:,:,:], return_latents=True)      
+
+                y_hat, latent = self.net.forward(x1=cond_img[:,:3,:,:], x2=cond_img[:,-3:,:,:], return_latents=True)      
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
                     d_loss_dict = self.train_discriminator(real_img, y_hat)
@@ -115,14 +129,14 @@ class Coach:
                 if self.opts.adv_lambda > 0:
                     loss_dict = {**d_loss_dict, **loss_dict}
                 
-                loss.backward()
+                self.accelerator.backward(loss)
                 self.optimizer.step()
 
                 #************************ logging and saving model************************** 
                 
                     
                 if self.global_step % self.opts.image_interval == 0 or (self.global_step < 1000 and self.global_step % 25 == 0):
-                    self.parse_and_log_images(id_logs, cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat, title='train')
+                    self.parse_and_log_images(cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat, title='train')
                     
                 if self.global_step % self.opts.board_interval == 0:
                     self.print_metrics(loss_dict, prefix='train')
@@ -157,12 +171,6 @@ class Coach:
 
             with torch.no_grad():
                 y_hat, latent = self.net.forward(x1=cond_img[:,:3,:,:], x2=cond_img[:,-3:,:,:], return_latents=True)                  
-
-            # Logging related
-            with torch.no_grad(): ##### modified for SR task
-                y = F.adaptive_avg_pool2d(y, (x1.shape[2], x1.shape[3]))
-                y_hat = F.adaptive_avg_pool2d(y_hat, (x1.shape[2], x1.shape[3]))
-                x1 = torch.clamp(x1, -1, 1)  ##### modified
             
             self.parse_and_log_images(cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat,
                                       title='test',
@@ -184,10 +192,10 @@ class Coach:
             else:
                 f.write(f'Step - {self.global_step}, \n{loss_dict}\n')
 
-    def configure_optimizers(self):
-        params = list(self.net.encoder.parameters())
+    def configure_optimizers(self, net):
+        params = list(net.encoder.parameters())
         if self.opts.train_decoder:
-            params += list(self.net.decoder.parameters())
+            params += list(net.decoder.parameters())
         if self.opts.optim_name == 'adam':
             optimizer = torch.optim.Adam(params, lr=self.opts.learning_rate)
         else:
@@ -257,7 +265,7 @@ class Coach:
         for key, value in metrics_dict.items():
             print(f'\t{key} = ', value)
 
-    def parse_and_log_images(self, id_logs, x, y, z, y_hat, title, subscript=None, display_count=2):
+    def parse_and_log_images(self, x, y, z, y_hat, title, subscript=None, display_count=2):
         im_data = []
         for i in range(display_count):
             cur_im_data = {
@@ -266,9 +274,6 @@ class Coach:
                 'target_face': common.tensor2im(y[i]),
                 'output_face': common.tensor2im(y_hat[i]),
             }
-            if id_logs is not None:
-                for key in id_logs[i]:
-                    cur_im_data[key] = id_logs[i][key]
             im_data.append(cur_im_data)
         self.log_images(title, im_data=im_data, subscript=subscript)
 
@@ -323,6 +328,7 @@ class Coach:
     def train_discriminator(self, real_img, fake_img):
         loss_dict = {}
         self.requires_grad(self.discriminator, True)
+        self.discriminator_optimizer.zero_grad()
 
         real_pred = self.discriminator(real_img)
         fake_pred = self.discriminator(fake_img.detach())
@@ -330,13 +336,13 @@ class Coach:
         loss_dict['loss_d'] = float(loss)
         loss = loss * self.opts.adv_lambda 
 
-        self.discriminator_optimizer.zero_grad()
-        loss.backward()
+        self.accelerator.backward(loss)
         self.discriminator_optimizer.step()
 
         # r1 regularization
         d_regularize = self.global_step % self.opts.d_reg_every == 0
         if d_regularize:
+            self.discriminator_optimizer.zero_grad()
             real_img = real_img.detach()
             real_img.requires_grad = True
             real_pred = self.discriminator(real_img)
@@ -344,7 +350,7 @@ class Coach:
 
             self.discriminator.zero_grad()
             r1_final_loss = self.opts.r1 / 2 * r1_loss * self.opts.d_reg_every + 0 * real_pred[0]
-            r1_final_loss.backward()
+            self.accelerator.backward(r1_final_loss)
             self.discriminator_optimizer.step()
             loss_dict['loss_r1'] = float(r1_final_loss)
 
@@ -411,7 +417,7 @@ if __name__=='__main__':
 
     opts.add_argument('--lpips_lambda', default=0.005, type=float, help='LPIPS loss multiplier factor')
     opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
-    opts.add_argument('--l2_lambda', default=0, type=float, help='L2 loss multiplier factor')
+    opts.add_argument('--l2_lambda', default=1, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')
@@ -434,8 +440,10 @@ if __name__=='__main__':
     # arguments for weights & biases support
     opts.add_argument('--use_wandb', action="store_true", help='Whether to use Weights & Biases to track experiment.')
 
+    opts.exp_dir = './run'
+    opts.stylegan_weights = '/mnt/e/paper/smile/weight/ori_style_150000.pt'
     args = opts.parse_args()
     # print(args)
-    # coach = Coach(args)
-    # coach.train()
-    test()
+    coach = Coach(args)
+    coach.train()
+    # test()

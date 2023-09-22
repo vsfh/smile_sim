@@ -1667,6 +1667,10 @@ class SRUnet1024(Unet):
         super().__init__(*args, **{**default_kwargs, **kwargs})
 
 if __name__=='__main__':
+    input1 = torch.randn((2,3,256,256)).cuda()
+    input2 = torch.randn((2,)).cuda()
+    
+    # layer = LearnedSinusoidalPosEmb(16).cuda()
+    # layer(input)
     net = BaseUnet64().cuda()
-    input = torch.randn((2,3,256,256)).cuda()
-    net(input)
+    net(input1, input2)

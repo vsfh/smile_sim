@@ -19,11 +19,11 @@ def flip(x, dim):
 
 
 class YangOldNew(Dataset):
-    def __init__(self, path, mode='decoder'):
-        self.path = path
+    def __init__(self, mode='decoder'):
+        self.path = '/mnt/e/data/smile/YangNew'
         self.all_files = []
         if mode=='test':
-            folder_list = os.listdir(self.path)[9:]
+            folder_list = os.listdir(self.path)[-9:]
         else:
             folder_list = os.listdir(self.path)[:-10]
             
