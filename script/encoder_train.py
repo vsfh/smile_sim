@@ -40,10 +40,13 @@ class Coach:
         self.opts.device = self.device
         # Initialize network
         if network=='unet':
-            from stylegan2.psp import pSp
+            from stylegan2.model_cond import pSp
         else:
             from stylegan2.psp_iortho import pSp
         net = pSp(self.opts).to(self.device)
+        # if self.opts.stylegan_weights is not None:
+        #     ckpt = torch.load(self.opts.stylegan_weights, map_location='cpu')
+        #     net.load_state_dict(ckpt['g_ema'], strict=True)
         if self.opts.adv_lambda > 0:  ##### modified, add discriminator
             discriminator = Discriminator(256, channel_multiplier=2)
             if self.opts.stylegan_weights is not None:
@@ -54,8 +57,8 @@ class Coach:
                                                             lr=self.opts.learning_rate)
             
         # Estimate latent_avg via dense sampling if latent_avg is not available
-        if net.latent_avg is None:
-            net.latent_avg = net.decoder.mean_latent(int(1e5))[0].detach()
+        # if net.latent_avg is None:
+        #     net.latent_avg = net.decoder.mean_latent(int(1e5))[0].detach()
 
         # Initialize loss
         if self.opts.id_lambda > 0 and self.opts.moco_lambda > 0:
@@ -118,7 +121,7 @@ class Coach:
                 real_img = batch['images'].to(self.device).float()
 
 
-                y_hat, latent = self.net.forward(x1=cond_img[:,:3,:,:], x2=cond_img[:,-3:,:,:], return_latents=True)      
+                y_hat, latent = self.net.forward(cond_img, return_latents=True)      
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
                     d_loss_dict = self.train_discriminator(real_img, y_hat)
@@ -170,7 +173,7 @@ class Coach:
             real_img = batch['images'].to(self.device).float()
 
             with torch.no_grad():
-                y_hat, latent = self.net.forward(x1=cond_img[:,:3,:,:], x2=cond_img[:,-3:,:,:], return_latents=True)                  
+                y_hat, latent = self.net.forward(cond_img, return_latents=True)                  
             
             self.parse_and_log_images(cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat,
                                       title='test',
@@ -409,15 +412,15 @@ if __name__=='__main__':
     opts.add_argument('--workers', default=4, type=int, help='Number of train dataloader workers')
     opts.add_argument('--test_workers', default=8, type=int, help='Number of test/inference dataloader workers')
 
-    opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
-    opts.add_argument('--optim_name', default='ranger', type=str, help='Which optimizer to use')
-    opts.add_argument('--train_decoder', default=True, type=bool, help='Whether to train the decoder model')
+    opts.add_argument('--learning_rate', default=0.001, type=float, help='Optimizer learning rate')
+    opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
+    opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
     opts.add_argument('--start_from_latent_avg', default=False, help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
-    opts.add_argument('--lpips_lambda', default=0.005, type=float, help='LPIPS loss multiplier factor')
+    opts.add_argument('--lpips_lambda', default=1.0, type=float, help='LPIPS loss multiplier factor')
     opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
-    opts.add_argument('--l2_lambda', default=1, type=float, help='L2 loss multiplier factor')
+    opts.add_argument('--l2_lambda', default=0.1, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')
@@ -440,10 +443,11 @@ if __name__=='__main__':
     # arguments for weights & biases support
     opts.add_argument('--use_wandb', action="store_true", help='Whether to use Weights & Biases to track experiment.')
 
-    opts.exp_dir = './run'
-    opts.stylegan_weights = '/mnt/e/paper/smile/weight/ori_style_150000.pt'
+
     args = opts.parse_args()
-    # print(args)
+    args.exp_dir = '/ssd/gregory/smile/orthovis/9.22'
+    args.stylegan_weights = '/ssd/gregory/smile/ori_style/checkpoint/150000.pt'
+    print(args)
     coach = Coach(args)
     coach.train()
     # test()

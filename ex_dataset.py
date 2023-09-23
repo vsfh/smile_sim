@@ -11,8 +11,8 @@ class RandomPerspective:
 
     def __init__(self,
                  degrees=0.0,
-                 translate=0.1,
-                 scale=0.5,
+                 translate=0.0,
+                 scale=0.0,
                  shear=0.0,
                  perspective=0.0,
                  border=(0, 0),
@@ -53,8 +53,8 @@ class RandomPerspective:
 
         # Translation
         T = np.eye(3, dtype=np.float32)
-        T[0, 2] = random.uniform(0.5 - self.translate, 0.5 + self.translate) * self.size[0]  # x translation (pixels)
-        T[1, 2] = random.uniform(0.5 - self.translate, 0.5 + self.translate) * self.size[1]  # y translation (pixels)
+        T[0, 2] = random.uniform(-self.translate, self.translate) * self.size[0]  # x translation (pixels)
+        T[1, 2] = random.uniform(-self.translate, self.translate) * self.size[1]  # y translation (pixels)
 
         # Combined rotation matrix
         M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT

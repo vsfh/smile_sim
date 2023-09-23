@@ -633,18 +633,12 @@ class Generator(nn.Module):
 
 class pSp(nn.Module):
     def __init__(            
-            self,
-            size,
-            style_dim,
-            n_mlp,
-            channel_multiplier=2,
-            blur_kernel=[1, 3, 3, 1],
-            lr_mlp=0.01,):
+            self,opts=None):
         super(pSp, self).__init__()
         # compute number of style inputs based on the output resolution
         self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
-        self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True)
+        self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True, use_skip_torgb=True, input_nc=4)
         self.decoder = Generator(256, 512, 8)
         self.decoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
@@ -656,11 +650,13 @@ class pSp(nn.Module):
             return_latents=False,
             first_layer_feature_ind = 0,  ##### modified
             fusion_block = None,   ##### modified
+            input_is_latent = False
 
     ):
         if styles is None:
             styles = [self.encoder(cond_img[:,-3:,:,:]*cond_img[:,2:3,:,:],return_feat=False, return_full=True)] ##### modified
-        _, feats = self.encoder(cond_img[:,:3,:,:], return_feat=True, return_full=True) ##### modified
+            input_is_latent = True
+        _, feats = self.encoder(cond_img[:,:4,:,:], return_feat=True, return_full=True) ##### modified
         
         first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            
 
@@ -669,7 +665,7 @@ class pSp(nn.Module):
         if fusion_block is None:
             fusion_block = self.encoder.fusion # use fusion layer to fuse encoder feature and decoder feature.
         images, result_latent = self.decoder(styles,
-                                            #  input_is_latent = True,
+                                             input_is_latent = input_is_latent,
                                              return_latents=return_latents,
                                              first_layer_feature=first_layer_feats,
                                              first_layer_feature_ind=first_layer_feature_ind,

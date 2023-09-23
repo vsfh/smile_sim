@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import glob
 import torch
-
+from ex_dataset import RandomPerspective
 def flip(x, dim):
     xsize = x.size()
     dim = x.dim() + dim if dim < 0 else dim
@@ -21,6 +21,8 @@ def flip(x, dim):
 class YangOldNew(Dataset):
     def __init__(self, mode='decoder'):
         self.path = '/mnt/e/data/smile/YangNew'
+        self.path = '/ssd/gregory/smile/YangNew/'
+        
         self.all_files = []
         if mode=='test':
             folder_list = os.listdir(self.path)[-9:]
@@ -35,6 +37,7 @@ class YangOldNew(Dataset):
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
+        self.aug = RandomPerspective(degrees=5, translate=0.00001, scale=0.01)
     
     def __len__(self):
         return len(self.all_files)
@@ -47,16 +50,22 @@ class YangOldNew(Dataset):
         cond_im = img.copy()
         
         
-        cond = np.zeros((9,256,256))
+        cond = np.zeros((7,256,256))
         ed = cv2.imread(os.path.join(img_folder, 'TeethEdgeDown.png'))
         cond[0] = self.preprocess(ed)[0]
         eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
         cond[1] = self.preprocess(eu)[0]
         mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
-        mk = cv2.dilate(mk, np.ones((3,3)))
         cond[2] = self.preprocess(mk)[0]
+        tk = cv2.imread(os.path.join(img_folder, 'TeethMasks.png'))
+        cond[3] = self.preprocess(tk)[0]
         
+        cond_im[tk==0]=0
+        cond_im = self.aug(cond_im)
+        cv2.imshow('img',cond_im)
+        cv2.waitKey(0)
         cond[-3:] = self.preprocess(cond_im)
+        
         return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
@@ -260,7 +269,7 @@ def get_loader_unet(size =1, mode='train'):
 if __name__ == '__main__':
     # ds = SmileDataset(r'C:\data\smile_synthesis\smile_segmap', None)
     # ds = SimulationDataset(r'C:\data\smile_synthesis\smile_segmap', None)
-    ds = Tianshi()
+    ds = YangOldNew()
 
     for batch in ds:
         cond = batch['cond']
