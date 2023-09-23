@@ -14,7 +14,7 @@ class RandomPerspective:
                  translate=0.0,
                  scale=0.0,
                  shear=0.0,
-                 perspective=0.0,
+                 perspective=1.0,
                  border=(0, 0),
                  pre_transform=None):
         self.degrees = degrees
@@ -57,7 +57,10 @@ class RandomPerspective:
         T[1, 2] = random.uniform(-self.translate, self.translate) * self.size[1]  # y translation (pixels)
 
         # Combined rotation matrix
-        M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
+        # M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
+        M = T @ S @ R
+        print(M)
+        
         # Affine image
 
         if self.perspective:

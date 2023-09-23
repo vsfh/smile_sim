@@ -19,9 +19,9 @@ def flip(x, dim):
 
 
 class YangOldNew(Dataset):
-    def __init__(self, mode='decoder'):
+    def __init__(self, mode='test'):
         self.path = '/mnt/e/data/smile/YangNew'
-        self.path = '/ssd/gregory/smile/YangNew/'
+        # self.path = '/ssd/gregory/smile/YangNew/'
         
         self.all_files = []
         if mode=='test':
@@ -37,7 +37,7 @@ class YangOldNew(Dataset):
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
-        self.aug = RandomPerspective(degrees=5, translate=0.00001, scale=0.01)
+        self.aug = RandomPerspective(translate=0.05, degrees=5, scale=0.05)
     
     def __len__(self):
         return len(self.all_files)
@@ -62,8 +62,8 @@ class YangOldNew(Dataset):
         
         cond_im[tk==0]=0
         cond_im = self.aug(cond_im)
-        cv2.imshow('img',cond_im)
-        cv2.waitKey(0)
+        # cv2.imshow('img',cond_im)
+        # cv2.waitKey(0)
         cond[-3:] = self.preprocess(cond_im)
         
         return {'images': im, 'cond':cond}
@@ -156,7 +156,6 @@ def seg_proc(tid_seg, show_tid):
         out_tid[tid_seg==tid]=1
     # tid_seg[tid_seg!=1]=0
     return out_tid.astype(np.float32)[None]
-
 
 class edge(Dataset):
     def __init__(self, mode='train'):
@@ -269,16 +268,16 @@ def get_loader_unet(size =1, mode='train'):
 if __name__ == '__main__':
     # ds = SmileDataset(r'C:\data\smile_synthesis\smile_segmap', None)
     # ds = SimulationDataset(r'C:\data\smile_synthesis\smile_segmap', None)
-    ds = YangOldNew()
+    ds = YangOldNew('train')
 
     for batch in ds:
         cond = batch['cond']
         
         img = batch['images']
-        cv2.imwrite('cond.jpg', (cond.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
-        cv2.imwrite('img.jpg', (img.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
+        # cv2.imwrite('cond.jpg', (cond.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
+        # cv2.imwrite('img.jpg', (img.permute(1, 2, 0)*255).detach().numpy().astype(np.uint8))
         
-        break
+        # break
         # cv2.waitKey(0)
 
 

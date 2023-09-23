@@ -122,6 +122,8 @@ class Coach:
 
 
                 y_hat, latent = self.net.forward(cond_img, return_latents=True)      
+                y_hat = y_hat*cond_img[:,2:3,:,:]+real_img*(1-cond_img[:,2:3,:,:])
+                
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
                     d_loss_dict = self.train_discriminator(real_img, y_hat)

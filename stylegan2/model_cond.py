@@ -671,7 +671,7 @@ class pSp(nn.Module):
                                              first_layer_feature_ind=first_layer_feature_ind,
                                              skip_layer_feature=skip_layer_feats,
                                              fusion_block=fusion_block) ##### modified
-        images = images*cond_img[:,2:3,:,:]+cond_img[:,-3:,:,:]*(1-cond_img[:,2:3,:,:])
+        # images = images*cond_img[:,2:3,:,:]+cond_img[:,-3:,:,:]*(1-cond_img[:,2:3,:,:])
         if return_latents:
             return images, result_latent
         else:
