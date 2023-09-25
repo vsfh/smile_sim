@@ -123,7 +123,6 @@ class Coach:
 
                 y_hat, latent = self.net.forward(cond_img, return_latents=True)      
                 y_hat = y_hat*cond_img[:,2:3,:,:]+real_img*(1-cond_img[:,2:3,:,:])
-
                 
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
@@ -415,15 +414,15 @@ if __name__=='__main__':
     opts.add_argument('--workers', default=4, type=int, help='Number of train dataloader workers')
     opts.add_argument('--test_workers', default=8, type=int, help='Number of test/inference dataloader workers')
 
-    opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
+    opts.add_argument('--learning_rate', default=0.001, type=float, help='Optimizer learning rate')
     opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
     opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
     opts.add_argument('--start_from_latent_avg', default=False, help='Whether to add average latent vector to generate codes from encoder.')
     opts.add_argument('--learn_in_w', action='store_true', help='Whether to learn in w space instead of w+')
 
-    opts.add_argument('--lpips_lambda', default=0.5, type=float, help='LPIPS loss multiplier factor')
+    opts.add_argument('--lpips_lambda', default=1.0, type=float, help='LPIPS loss multiplier factor')
     opts.add_argument('--id_lambda', default=0, type=float, help='ID loss multiplier factor')
-    opts.add_argument('--l2_lambda', default=0.001, type=float, help='L2 loss multiplier factor')
+    opts.add_argument('--l2_lambda', default=0.1, type=float, help='L2 loss multiplier factor')
     opts.add_argument('--w_norm_lambda', default=0, type=float, help='W-norm loss multiplier factor')
     opts.add_argument('--lpips_lambda_crop', default=0, type=float, help='LPIPS loss multiplier factor for inner image region')
     opts.add_argument('--l2_lambda_crop', default=0, type=float, help='L2 loss multiplier factor for inner image region')

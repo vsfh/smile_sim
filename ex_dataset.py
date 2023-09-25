@@ -165,6 +165,61 @@ class TestDataset(Dataset):
         im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
         im = im / 255.0  # 0-255 to 0.0-1.0
         return im
+import torch
+class MyTestDataset(Dataset):
+    def __init__(self, mode='test'):
+        self.path = '/mnt/d/data/smile/out'
+        # self.path = '/ssd/gregory/smile/YangNew/'
+        
+        self.all_files = []
+        folder_list = os.listdir(self.path)
+            
+        for folder in folder_list:
+            self.all_files.append(os.path.join(self.path, folder,))
+            
+            # if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
+                # self.all_files.append(os.path.join(self.path, folder, 'modal'))
+        print('total image:', len(self.all_files))
+        self.mode = mode
+        self.half = False
+        self.aug = RandomPerspective(translate=0.05, degrees=5, scale=0.05)
+    
+    def __len__(self):
+        return len(self.all_files)
+    
+    def __getitem__(self, index):
+        img_folder = self.all_files[index]
+        img = cv2.imread(os.path.join(img_folder, 'smile.png'))
+        img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        im = self.preprocess(img)
+        cond_im = img.copy()
+        
+        
+        cond = np.zeros((7,256,256))
+        ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
+        cond[0] = self.preprocess(ed)[0]
+        eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
+        cond[1] = self.preprocess(eu)[0]
+        mk = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
+        cond[2] = self.preprocess(mk)[0]
+        tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))
+        cond[3] = self.preprocess(tk)[0]
+        
+        cond_im[tk==0]=0
+        cond_im = self.aug(cond_im)
+        # cv2.imshow('img',cond_im)
+        # cv2.waitKey(0)
+        cond[-3:] = self.preprocess(cond_im)        
+        return {'images': im, 'cond':cond}
+    def preprocess(self, img):
+        img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        if len(img_resize.shape)==2:
+            img_resize = img_resize[:,:,None].repeat(1,1,3)
+        im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
+        im = torch.from_numpy(im)  # to torch
+        im = im.half() if self.half else im.float()  # uint8 to fp16/32
+        im /= 255.0  # 0-255 to 0.0-1.0
+        return im
 if __name__=='__main__':
     ds = ImagesDataset()
     for batch in ds:

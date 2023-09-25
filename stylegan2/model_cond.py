@@ -640,7 +640,7 @@ class pSp(nn.Module):
         # Define architecture
         self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True, use_skip_torgb=True, input_nc=4)
         self.decoder = Generator(256, 512, 8)
-        self.load_state_dict(torch.load('/ssd/gregory/smile/orthovis/9.22/checkpoints/iteration_90000.pt')['state_dict'])
+        # self.load_state_dict(torch.load('/ssd/gregory/smile/orthovis/9.22/checkpoints/iteration_90000.pt')['state_dict'])
         # self.encoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
         
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))

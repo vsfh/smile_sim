@@ -426,7 +426,7 @@ class Coach:
 
 def test():
     import cv2
-    ckpt = torch.load('/mnt/e/paper/smile/weight/iteration_20000.pt')
+    ckpt = torch.load('/mnt/e/paper/smile/weight/ex_iteration_250000.pt')
     opts = MyObject(ckpt['opts'])
     opts.stylegan_weights = '/mnt/e/paper/smile/weight/ori_style_150000.pt'
     if opts.l2_lambda!=0:
@@ -447,12 +447,15 @@ def test():
 
         with torch.no_grad():
             x1 = x1.cuda().float()
+            y = y.cuda().float()
+            
             y_hat, latent = net.forward(x1=x1[:,:2,:,:], x2=x1[:,-3:,:,:], resize=(x1.shape[2:]==y.shape[2:]), zero_noise=opts.zero_noise, use_feature=opts.use_feature,
                                                     first_layer_feature_ind=opts.feat_ind, use_skip=opts.use_skip, return_latents=True)   
+            y_hat = y_hat*x1[:,0:1,:,:]+y*(1-x1[:,0:1,:,:])
         im = y_hat[0].cpu().numpy().clip(0,1)
         im = im.transpose(1,2,0)*255
         im = im.astype(np.uint8)[...,::-1]
-        cv2.imwrite(f'/mnt/e/paper/smile/iortho_res/{str(batch_idx).zfill(5)}.png', im)
+        cv2.imwrite(f'/mnt/e/paper/smile/ex_res/{str(batch_idx).zfill(5)}.png', im)
         # cv2.imshow('im', im)
         # cv2.waitKey(0)
             

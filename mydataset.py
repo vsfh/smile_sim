@@ -21,7 +21,7 @@ def flip(x, dim):
 class YangOldNew(Dataset):
     def __init__(self, mode='test'):
         self.path = '/mnt/e/data/smile/YangNew'
-        self.path = '/ssd/gregory/smile/YangNew/'
+        # self.path = '/ssd/gregory/smile/YangNew/'
         
         self.all_files = []
         if mode=='test':
