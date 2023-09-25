@@ -536,7 +536,7 @@ class Generator(nn.Module):
             truncation_latent=None,
             input_is_latent=False,
             noise=None,
-            randomize_noise=True,
+            randomize_noise=False,
             first_layer_feature = None, ##### modified
             first_layer_feature_ind = 0,  ##### modified
             skip_layer_feature = None,   ##### modified

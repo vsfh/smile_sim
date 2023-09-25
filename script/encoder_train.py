@@ -437,9 +437,9 @@ if __name__=='__main__':
     # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
     opts.add_argument('--max_steps', default=250000, type=int, help='Maximum number of training steps')
-    opts.add_argument('--image_interval', default=100, type=int, help='Interval for logging train images during training')
+    opts.add_argument('--image_interval', default=50, type=int, help='Interval for logging train images during training')
     opts.add_argument('--board_interval', default=50, type=int, help='Interval for logging metrics to tensorboard')
-    opts.add_argument('--val_interval', default=1000, type=int, help='Validation interval')
+    opts.add_argument('--val_interval', default=50, type=int, help='Validation interval')
     opts.add_argument('--save_interval', default=10000, type=int, help='Model checkpoint interval')
 
     # arguments for weights & biases support
