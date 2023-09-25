@@ -21,13 +21,13 @@ def flip(x, dim):
 class YangOldNew(Dataset):
     def __init__(self, mode='test'):
         self.path = '/mnt/e/data/smile/YangNew'
-        # self.path = '/ssd/gregory/smile/YangNew/'
+        self.path = '/ssd/gregory/smile/YangNew/'
         
         self.all_files = []
         if mode=='test':
             folder_list = os.listdir(self.path)[-9:]
         else:
-            folder_list = os.listdir(self.path)[:-10]
+            folder_list = os.listdir(self.path)
             
         for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
@@ -64,8 +64,7 @@ class YangOldNew(Dataset):
         cond_im = self.aug(cond_im)
         # cv2.imshow('img',cond_im)
         # cv2.waitKey(0)
-        cond[-3:] = self.preprocess(cond_im)
-        
+        cond[-3:] = self.preprocess(cond_im)        
         return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))

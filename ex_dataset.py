@@ -59,7 +59,7 @@ class RandomPerspective:
         # Combined rotation matrix
         # M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
         M = T @ S @ R
-        print(M)
+        # print(M)
         
         # Affine image
 
