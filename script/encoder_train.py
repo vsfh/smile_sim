@@ -22,6 +22,16 @@ from criteria.lpips.lpips import LPIPS
 from stylegan2.model import Discriminator ##### modified
 from script.ranger import Ranger
 
+def replace_batchnorm(model):
+    for name, module in reversed(model._modules.items()):
+        if len(list(module.children())) > 0:
+            model._modules[name] = replace_batchnorm(module)
+        
+        if isinstance(module, torch.nn.BatchNorm2d):
+            model._modules[name] = torch.nn.GroupNorm(32, module.num_features)
+
+    return model 
+
 class MyObject:
     def __init__(self, dictionary):
         for key, value in dictionary.items():
@@ -44,6 +54,7 @@ class Coach:
         else:
             from stylegan2.psp_iortho import pSp
         net = pSp(self.opts).to(self.device)
+        net = replace_batchnorm(net)
         # if self.opts.stylegan_weights is not None:
         #     ckpt = torch.load(self.opts.stylegan_weights, map_location='cpu')
         #     net.load_state_dict(ckpt['g_ema'], strict=True)
@@ -122,7 +133,7 @@ class Coach:
 
 
                 y_hat, latent = self.net.forward(cond_img, return_latents=True)      
-                y_hat = y_hat*cond_img[:,2:3,:,:]+real_img*(1-cond_img[:,2:3,:,:])
+                # y_hat = y_hat*cond_img[:,2:3,:,:]+real_img*(1-cond_img[:,2:3,:,:])
                 
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
@@ -414,7 +425,7 @@ if __name__=='__main__':
     opts.add_argument('--workers', default=4, type=int, help='Number of train dataloader workers')
     opts.add_argument('--test_workers', default=8, type=int, help='Number of test/inference dataloader workers')
 
-    opts.add_argument('--learning_rate', default=0.001, type=float, help='Optimizer learning rate')
+    opts.add_argument('--learning_rate', default=0.0001, type=float, help='Optimizer learning rate')
     opts.add_argument('--optim_name', default='adam', type=str, help='Which optimizer to use')
     opts.add_argument('--train_decoder', default=False, type=bool, help='Whether to train the decoder model')
     opts.add_argument('--start_from_latent_avg', default=False, help='Whether to add average latent vector to generate codes from encoder.')
@@ -437,9 +448,9 @@ if __name__=='__main__':
     # opts.add_argument('--discriminator_path', default=None, type=str, help='Path to pSp model checkpoint')
 
     opts.add_argument('--max_steps', default=250000, type=int, help='Maximum number of training steps')
-    opts.add_argument('--image_interval', default=50, type=int, help='Interval for logging train images during training')
+    opts.add_argument('--image_interval', default=100, type=int, help='Interval for logging train images during training')
     opts.add_argument('--board_interval', default=50, type=int, help='Interval for logging metrics to tensorboard')
-    opts.add_argument('--val_interval', default=50, type=int, help='Validation interval')
+    opts.add_argument('--val_interval', default=1000, type=int, help='Validation interval')
     opts.add_argument('--save_interval', default=10000, type=int, help='Model checkpoint interval')
 
     # arguments for weights & biases support

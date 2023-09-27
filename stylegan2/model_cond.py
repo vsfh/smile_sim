@@ -8,7 +8,8 @@ import sys
 sys.path.append('.')
 sys.path.append('..')
 from stylegan2.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
-from encoders.psp_encoders import LightStyleEncoder, GradualStyleEncoder
+from encoders.test_encoders import GradualStyleEncoder
+
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -536,7 +537,7 @@ class Generator(nn.Module):
             truncation_latent=None,
             input_is_latent=False,
             noise=None,
-            randomize_noise=False,
+            randomize_noise=True,
             first_layer_feature = None, ##### modified
             first_layer_feature_ind = 0,  ##### modified
             skip_layer_feature = None,   ##### modified
@@ -641,7 +642,7 @@ class pSp(nn.Module):
         self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True, use_skip_torgb=True, input_nc=4)
         self.decoder = Generator(256, 512, 8)
         # self.load_state_dict(torch.load('/ssd/gregory/smile/orthovis/9.22/checkpoints/iteration_90000.pt')['state_dict'])
-        # self.encoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
+        self.decoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
         
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
 
@@ -673,7 +674,7 @@ class pSp(nn.Module):
                                              first_layer_feature_ind=first_layer_feature_ind,
                                              skip_layer_feature=skip_layer_feats,
                                              fusion_block=fusion_block) ##### modified
-        # images = images*cond_img[:,2:3,:,:]+cond_img[:,-3:,:,:]*(1-cond_img[:,2:3,:,:])
+        images = images*(cond_img[:,3:4,:,:])+cond_img[:,:3,:,:]*(1-cond_img[:,3:4,:,:])
         if return_latents:
             return images, result_latent
         else:

@@ -21,13 +21,13 @@ def flip(x, dim):
 class YangOldNew(Dataset):
     def __init__(self, mode='test'):
         self.path = '/mnt/e/data/smile/YangNew'
-        # self.path = '/ssd/gregory/smile/YangNew/'
+        self.path = '/ssd/gregory/smile/YangNew/'
         
         self.all_files = []
         if mode=='test':
             folder_list = os.listdir(self.path)[-9:]
         else:
-            folder_list = os.listdir(self.path)
+            folder_list = os.listdir(self.path)[:-9]
             
         for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
@@ -48,23 +48,30 @@ class YangOldNew(Dataset):
         img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
         im = self.preprocess(img)
         cond_im = img.copy()
+        cond_im_2 = img.copy()
         
         
         cond = np.zeros((7,256,256))
         ed = cv2.imread(os.path.join(img_folder, 'TeethEdgeDown.png'))
-        cond[0] = self.preprocess(ed)[0]
         eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
-        cond[1] = self.preprocess(eu)[0]
         mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
-        cond[2] = self.preprocess(mk)[0]
         tk = cv2.imread(os.path.join(img_folder, 'TeethMasks.png'))
-        cond[3] = self.preprocess(tk)[0]
+        cond[3] = self.preprocess(mk)[0]
         
         cond_im[tk==0]=0
         cond_im = self.aug(cond_im)
+        img[tk!=0]=0
         # cv2.imshow('img',cond_im)
         # cv2.waitKey(0)
-        cond[-3:] = self.preprocess(cond_im)        
+        cond[-3:] = self.preprocess(cond_im)
+
+        cond_im_2[...,0][mk[...,0]!=0] = ed[...,0][mk[...,0]!=0]
+        cond_im_2[...,1][mk[...,0]!=0] = eu[...,0][mk[...,0]!=0]     
+        cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
+        cond[:3] = self.preprocess(cond_im_2)
+        
+                
+                
         return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
