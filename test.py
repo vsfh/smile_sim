@@ -64,7 +64,7 @@ class Yolo(BaseModel):
                 cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
 
 
-        objs = np.array(objs, dtype=np.int)
+        objs = np.array(objs, dtype=np.int64)
         return objs
 
 
@@ -85,10 +85,6 @@ class Segmentation(BaseModel):
 
 
         return output
-
-
-from train_less_cgan import mixing_noise
-
 
 class alignModel(torch.nn.Module):
     def __init__(self, encoder_weight, decoder_weight, type='up'):

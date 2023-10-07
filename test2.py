@@ -66,7 +66,7 @@ class Yolo(BaseModel):
                 cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
 
 
-        objs = np.array(objs, dtype=np.int)
+        objs = np.array(objs, dtype=np.int64)
         return objs
 
 

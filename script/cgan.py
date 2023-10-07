@@ -22,8 +22,8 @@ class Encoder(nn.Module):
             512: 32 * channel_multiplier,
             1024: 16 * channel_multiplier,
         }
-        # if latent<512:
-        #     channels = {k: v // 2 for k, v in channels.items()}
+        if latent<512:
+            channels = {k: v // 2 for k, v in channels.items()}
         self.channels = channels
 
         convs = [ConvLayer(input_channel, channels[size], 1)]
@@ -192,7 +192,7 @@ class TeethGenerator(nn.Module):
             truncation_latent=None,
             input_is_latent=False,
             noise=None,
-            randomize_noise=True,
+            randomize_noise=False,
             input_img=False
     ):
         if not input_is_latent:

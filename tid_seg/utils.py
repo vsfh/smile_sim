@@ -114,7 +114,7 @@ def loose_bbox(coords, image_size, loose_coef=0.):
     coords[1] = max(0, int(coords[1]))
     coords[2] = min(w, int(coords[2]))
     coords[3] = min(h, int(coords[3]))
-    coords = coords.astype(np.int)
+    coords = coords.astype(np.int64)
     return coords
 
 

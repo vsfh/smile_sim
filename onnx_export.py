@@ -1,4 +1,4 @@
-from cgan import TeethGenerator
+from script.cgan import TeethGenerator
 # from edge_gan import TeethGenerator
 # from encoders.psp_encoders import GradualStyleEncoder
 import torch
@@ -26,7 +26,7 @@ class Gen_wo_edge(nn.Module):
         super().__init__()
         # self.psp_encoder = GradualStyleEncoder(50, 'ir_se')
         self.decoder = TeethGenerator(256, 256, 1).cuda()
-        self.sample_z = torch.randn((1,256)).cuda()
+        self.sample_z = torch.randn((1,256)).float().cuda()
 
     def forward(self, real_img, mask):
         images,_ = self.decoder([self.sample_z], real_image=real_img, mask=1-mask,
@@ -70,16 +70,15 @@ def convert_wo_to_onnx():
     dynamic_axes = {
         'input_image': {0: 'batch_size'},
         'mask': {0: 'batch_size'},
-        'edge': {0: 'batch_size'},
-        'big_mask': {0: 'batch_size'},
+        # 'edge': {0: 'batch_size'},
+        # 'big_mask': {0: 'batch_size'},
         'align_img': {0: 'batch_size'}
     }
 
-    output_path = '/home/disk/triton/backup_model/new_smile_wo_edge_gan/1/new_model.onnx'
+    output_path = '/mnt/e/share/wo_edge_gan.onnx'
     # input = './smile/C01001459133.jpg'
-    input1 = torch.randn(1, 3, 256, 256).cuda()
-    input2 = torch.randn(1, 1, 256, 256).cuda()
-    input3 = torch.randn(1, 1, 256, 256).cuda()
+    input1 = torch.randn(1, 3, 256, 256).float().cuda()
+    input2 = torch.randn(1, 1, 256, 256).float().cuda()
     
     model = Gen_wo_edge().eval().cuda()
     ckpt_decoder = '/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt'
@@ -103,8 +102,8 @@ def onnx_infer():
     yolo = Yolo('/mnt/share/shenfeihong/weight/pretrain/yolo.onnx', (640, 640))
     seg = Segmentation('/mnt/share/shenfeihong/weight/pretrain/edge.onnx', (256, 256))
     sample_dir = '/mnt/share/shenfeihong/data/test/11.8.2022'
-    save_path = '/mnt/share/shenfeihong/weight/smile-sim/2022.11.11/onnx'
-    sess = onnxruntime.InferenceSession('model_single.onnx',
+    save_path = '/mnt/e/share/save'
+    sess = onnxruntime.InferenceSession('/mnt/e/share/wo_edge_gan.onnx',
                                         providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider',
                                                 'CPUExecutionProvider'])   
     for file in os.listdir(sample_dir):
@@ -132,16 +131,13 @@ def onnx_infer():
         result = seg.predict(mouth)
 
         mask = (result[..., 0] > 0.6).astype(np.float32)
-        big_mask = cv2.dilate(mask, kernel=np.ones((3, 3)))
-        mask = cv2.dilate(mask, kernel=np.ones((33, 33)))-big_mask
 
         mouth_tensor = mouth/255*2-1
         mouth_tensor = mouth_tensor.transpose(2,0,1).astype(np.float32)[None]
 
         mask = mask.astype(np.float32)[None][None]
-        big_mask = big_mask.astype(np.float32)[None][None]
 
-        align_img = sess.run([], {'input_image':mouth_tensor,'mask':mask,'big_mask':big_mask}) 
+        align_img = sess.run([], {'input_image':mouth_tensor,'mask':mask}) 
         align_img = align_img[0][0].transpose(1,2,0)*255/2+255/2
         image[y: y + 256, x: x + 256] = align_img.clip(0,255)
         cv2.imwrite(f'{save_path}/{file}', cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8))
@@ -178,4 +174,5 @@ def model_infer():
     align_img = model(img, mask, big_mask)
     align_img = align_img[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
     cv2.imwrite('img.jpg', cv2.cvtColor(align_img, cv2.COLOR_RGB2BGR).astype(np.uint8))
-convert_wo_to_onnx()
+# convert_wo_to_onnx()
+onnx_infer()
