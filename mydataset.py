@@ -51,7 +51,7 @@ class YangOldNew(Dataset):
         cond_im_2 = img.copy()
         
         
-        cond = np.zeros((7,256,256))
+        cond = torch.zeros((7,256,256))
         ed = cv2.imread(os.path.join(img_folder, 'TeethEdgeDown.png'))
         eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
         mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
@@ -70,8 +70,6 @@ class YangOldNew(Dataset):
         cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
         cond[:3] = self.preprocess(cond_im_2)
         
-                
-                
         return {'images': im, 'cond':cond}
 
         # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
