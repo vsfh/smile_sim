@@ -17,7 +17,7 @@ from accelerate import Accelerator
 from utils import common, train_utils
 from criteria import id_loss, w_norm
 # from ex_dataset import ImagesDataset, TestDataset
-from mydataset import YangOldNew
+from mydataset import YangOldNew, GeneratedDepth
 from criteria.lpips.lpips import LPIPS
 from stylegan2.model import Discriminator ##### modified
 from script.ranger import Ranger
@@ -218,8 +218,10 @@ class Coach:
         return optimizer
 
     def configure_datasets(self):
-        train_dataset = YangOldNew('train')
-        test_dataset = YangOldNew('test')
+        # train_dataset = YangOldNew('train')
+        # test_dataset = YangOldNew('test')
+        train_dataset = GeneratedDepth('train')
+        test_dataset = GeneratedDepth('test')
         print(f"Number of training samples: {len(train_dataset)}")
         print(f"Number of test samples: {len(test_dataset)}")
         return train_dataset, test_dataset
@@ -457,7 +459,7 @@ if __name__=='__main__':
 
 
     args = opts.parse_args()
-    args.exp_dir = '/ssd/gregory/smile/orthovis/9.22'
+    args.exp_dir = '/ssd/gregory/smile/orthovis/10.8'
     args.stylegan_weights = '/ssd/gregory/smile/ori_style/checkpoint/150000.pt'
     print(args)
     coach = Coach(args)

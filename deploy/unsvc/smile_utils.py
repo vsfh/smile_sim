@@ -448,9 +448,9 @@ def erode(binary_image):
     eroded_image = 1- eroded_image.clip(0,1)
     return eroded_image
 
-def dilate(binary_image):
-    dilation_kernel = torch.ones(1, 1, 3, 3).cuda()
-    dilated_image = F.conv2d(binary_image, dilation_kernel, padding=1)
+def dilate(binary_image, kernel_size=3):
+    dilation_kernel = torch.ones(1, 1, kernel_size, kernel_size).cuda()
+    dilated_image = F.conv2d(binary_image, dilation_kernel, padding=int((kernel_size-1)/2))
     # dilated_image = torch.where(dilated_image >= 1, torch.tensor(1.0), dilated_image)
     return dilated_image.clip(0,1)
 

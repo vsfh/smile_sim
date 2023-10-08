@@ -19,21 +19,23 @@ import imageio
 # rendering components
 from pytorch3d.renderer import (
 	RasterizationSettings, MeshRenderer, MeshRasterizer, BlendParams,
-	PerspectiveCameras, SoftPhongShader,HardPhongShader, TexturesVertex, PointLights,SoftSilhouetteShader
+	PerspectiveCameras,HardPhongShader, PointLights
 )
 import onnxruntime
 from tid_models import get_tid, get_yolo_tid
 
+is_onnx = False
 onnx_opt_dict = {
     'smile_sim_lip_preserve-yolov5':{'input':['images'],'output':['output'],'path':'/mnt/d/triton/backup_model/smile_sim_lip_preserve-yolov5/1'},
     'smile_sim_lip_preserve-edge_net':{'input':['data'],'output':['output'],'path':'/mnt/d/triton/backup_model/smile_sim_lip_preserve-edge_net/1'},
     'cls-ensemble':{'input':['images'],'output':['output'],'path':'/mnt/d/triton/backup_model/cls-yolov5s/1'},
     'new_smile_wo_edge_gan':{'input':['input_image','mask'],'output':['align_img'],'path':'/mnt/d/triton/backup_model/new_smile_wo_edge_gan/1'},
 }
-onnx_sess_dict = {}
-for k,v in onnx_opt_dict.items():
-    onnx_sess_dict[k] = onnxruntime.InferenceSession(os.path.join(v['path'],'model.onnx'),providers=['CUDAExecutionProvider','CPUExecutionProvider'])
-    
+if is_onnx:
+    onnx_sess_dict = {}
+    for k,v in onnx_opt_dict.items():
+        onnx_sess_dict[k] = onnxruntime.InferenceSession(os.path.join(v['path'],'model.onnx'),providers=['CUDAExecutionProvider','CPUExecutionProvider'])
+        
 def onnx_infer(data, sess_name):
     input = {name: data[i] for i,name in enumerate(onnx_opt_dict[sess_name]['input'])}
     output_names = onnx_opt_dict[sess_name]['output']
@@ -189,139 +191,139 @@ def detection_and_segmentation(face_img, save_path=None):
             # 'upper_lower': (upper, lower)
             }
 
+class SoftEdgeShader(nn.Module):
+    def __init__(self, device="cpu", blend_params=None, zfar=200, znear=1):
+        super().__init__()
+        self.blend_params = blend_params if blend_params is not None else BlendParams()
+        self.zfar = zfar
+        self.znear = znear
 
-def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
-    class SoftEdgeShader(nn.Module):
-        def __init__(self, device="cpu", blend_params=None, zfar=200, znear=1):
-            super().__init__()
-            self.blend_params = blend_params if blend_params is not None else BlendParams()
-            self.zfar = zfar
-            self.znear = znear
+    def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
+        blend_params = kwargs.get("blend_params", self.blend_params)
+        extra_mask = kwargs.get("extra_mask", None)
 
-        def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
-            blend_params = kwargs.get("blend_params", self.blend_params)
-            extra_mask = kwargs.get("extra_mask", None)
+        mask = fragments.pix_to_face >= 0
+        if extra_mask is not None:
+            mask = mask * extra_mask
 
-            mask = fragments.pix_to_face >= 0
-            if extra_mask is not None:
-                mask = mask * extra_mask
+        prob_map = torch.sigmoid(-fragments.dists / blend_params.sigma) * mask
+        prob_map = torch.sum(prob_map, -1)
+        alpha = torch.prod((1.0 - prob_map), dim=-1, keepdim=True)
+        alpha = 1 - alpha    
+                
+        zbuf = fragments.zbuf[...,-1]
+        zbuf[zbuf==-1] = 1e10
+        zbuf = torch.cat((torch.ones_like(zbuf[0][None])*1e10,zbuf),0)
+        zbuf_mask = torch.argmin(zbuf, 0, keepdim=True)
+        
+        for i in range(len(prob_map)):
+            prob_map[i] = prob_map[i]*(zbuf_mask[0]==i+1)
+        return prob_map, 0
 
-            prob_map = torch.sigmoid(-fragments.dists / blend_params.sigma) * mask
-            prob_map = torch.sum(prob_map, -1)
-            alpha = torch.prod((1.0 - prob_map), dim=-1, keepdim=True)
-            alpha = 1 - alpha    
-                    
-            zbuf = fragments.zbuf[...,-1]
-            zbuf[zbuf==-1] = 1e10
-            zbuf = torch.cat((torch.ones_like(zbuf[0][None])*1e10,zbuf),0)
-            zbuf_mask = torch.argmin(zbuf, 0, keepdim=True)
-            
-            for i in range(len(prob_map)):
-                prob_map[i] = prob_map[i]*(zbuf_mask[0]==i+1)
-            return prob_map, 0
+class EdgeShader(nn.Module):
+    def forward(self, fragments, meshes, **kwargs):
+        bg_value = 1e6
+        zbuf = fragments.zbuf
+        N, H, W, K = zbuf.shape
 
-    class EdgeShader(nn.Module):
-        def forward(self, fragments, meshes, **kwargs):
-            bg_value = 1e6
-            zbuf = fragments.zbuf
-            N, H, W, K = zbuf.shape
+        zbuf[zbuf == -1] = bg_value
 
-            zbuf[zbuf == -1] = bg_value
-
-            depth, _ = torch.min(zbuf[:-1], dim=0)
-            max_depth, min_depth = depth[depth != bg_value].max(), depth[depth != bg_value].min()
-            new_depth = 1 - (depth -min_depth) / (max_depth - min_depth)
-            new_depth[depth == bg_value] = 0
+        depth, _ = torch.min(zbuf[:-1], dim=0)
+        max_depth, min_depth = depth[depth != bg_value].max(), depth[depth != bg_value].min()
+        new_depth = 1 - (depth -min_depth) / (max_depth - min_depth)
+        new_depth[depth == bg_value] = 0
 
 
-            bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
-            zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
-            teeth = torch.argmin(zbuf_with_bg, dim=0)
+        bg = torch.ones((1, H, W), device=zbuf.device) * (bg_value - 1)
+        zbuf_with_bg = torch.cat([bg, zbuf[..., 0]], dim=0)
+        teeth = torch.argmin(zbuf_with_bg, dim=0)
 
-            return teeth, new_depth.cpu().numpy()
+        return teeth, new_depth.cpu().numpy()
 
-    class Model(nn.Module):
-        def __init__(self, meshes, image_ref, teeth_region, focal_length, axis_angle, translation,
-                    raster_settings):
-            super().__init__()
-            self.up_mesh, self.down_mesh = meshes
-            self.device = self.up_mesh.device
+class Model(nn.Module):
+    def __init__(self, meshes, image_ref, teeth_region, focal_length, axis_angle, translation,
+                raster_settings):
+        super().__init__()
+        self.up_mesh, self.down_mesh = meshes
+        self.device = self.up_mesh.device
 
-            image_ref = torch.from_numpy(image_ref[np.newaxis, ...].astype(np.float32))
-            self.register_buffer('image_ref', image_ref)
+        image_ref = torch.from_numpy(image_ref[np.newaxis, ...].astype(np.float32))
+        self.register_buffer('image_ref', image_ref)
 
-            mouth_mask, up_mask = teeth_region
-            mouth_mask = torch.from_numpy(mouth_mask[np.newaxis, ...].astype(np.float32))
-            up_mask = torch.from_numpy(up_mask[np.newaxis, ...].astype(np.float32))
-            
-            self.register_buffer('mouth_mask', mouth_mask)
-            self.register_buffer('up_mask', up_mask)
-            
-            self.focal_length = nn.Parameter(torch.tensor(focal_length, dtype=torch.float32, device=self.device))
-            
-            self.angle_x = nn.Parameter(torch.tensor(axis_angle[:1], dtype=torch.float32, device=self.device))
-            self.angle_y = nn.Parameter(torch.tensor(axis_angle[1:2], dtype=torch.float32, device=self.device))
-            self.angle_z = nn.Parameter(torch.tensor(axis_angle[2:3], dtype=torch.float32, device=self.device))
+        mouth_mask, up_mask = teeth_region
+        mouth_mask = torch.from_numpy(mouth_mask[np.newaxis, ...].astype(np.float32))
+        up_mask = torch.from_numpy(up_mask[np.newaxis, ...].astype(np.float32))
+        
+        self.register_buffer('mouth_mask', mouth_mask)
+        self.register_buffer('up_mask', up_mask)
+        
+        self.focal_length = nn.Parameter(torch.tensor(focal_length, dtype=torch.float32, device=self.device))
+        
+        self.angle_x = nn.Parameter(torch.tensor(axis_angle[:1], dtype=torch.float32, device=self.device))
+        self.angle_y = nn.Parameter(torch.tensor(axis_angle[1:2], dtype=torch.float32, device=self.device))
+        self.angle_z = nn.Parameter(torch.tensor(axis_angle[2:3], dtype=torch.float32, device=self.device))
 
-            self.x = nn.Parameter(torch.tensor((translation[0],), dtype=torch.float32, device=self.device))
-            self.y = nn.Parameter(torch.tensor((translation[1],), dtype=torch.float32, device=self.device))
-            self.z = nn.Parameter(torch.tensor((translation[2],), dtype=torch.float32, device=self.device))
+        self.x = nn.Parameter(torch.tensor((translation[0],), dtype=torch.float32, device=self.device))
+        self.y = nn.Parameter(torch.tensor((translation[1],), dtype=torch.float32, device=self.device))
+        self.z = nn.Parameter(torch.tensor((translation[2],), dtype=torch.float32, device=self.device))
 
-            self.dist_x = nn.Parameter(torch.tensor((-0,), dtype=torch.float32, device=self.device))
-            self.dist_y = nn.Parameter(torch.tensor((-0,), dtype=torch.float32, device=self.device))
-            self.dist_z = nn.Parameter(torch.tensor((2,), dtype=torch.float32, device=self.device))
+        self.dist_x = nn.Parameter(torch.tensor((-0,), dtype=torch.float32, device=self.device))
+        self.dist_y = nn.Parameter(torch.tensor((-0,), dtype=torch.float32, device=self.device))
+        self.dist_z = nn.Parameter(torch.tensor((2,), dtype=torch.float32, device=self.device))
 
-            self.cameras = PerspectiveCameras(device=self.device, focal_length=self.focal_length)
+        self.cameras = PerspectiveCameras(device=self.device, focal_length=self.focal_length)
 
-            self.renderer = MeshRenderer(
-                rasterizer=MeshRasterizer(
-                    cameras=self.cameras,
-                    raster_settings=raster_settings
-                ),
-                shader=SoftEdgeShader(
-                    blend_params=BlendParams(sigma=1e-6, gamma=1e-2, background_color=(0., 0., 0.)))
-            )
-            # self.seg_model = torch.jit.load('traced_bert.pt')
-            # self.seg_model.to(self.device)
-            # for param in self.seg_model.parameters():
-            #     param.requires_grad = False
+        self.renderer = MeshRenderer(
+            rasterizer=MeshRasterizer(
+                cameras=self.cameras,
+                raster_settings=raster_settings
+            ),
+            shader=SoftEdgeShader(
+                blend_params=BlendParams(sigma=1e-6, gamma=1e-2, background_color=(0., 0., 0.)))
+        )
+        # self.seg_model = torch.jit.load('traced_bert.pt')
+        # self.seg_model.to(self.device)
+        # for param in self.seg_model.parameters():
+        #     param.requires_grad = False
 
-        def render(self):
-            with torch.no_grad():
-                axis_angles = torch.cat([self.angle_x, self.angle_y, self.angle_z])
-                R = axis_angle_to_matrix(axis_angles[None, :])
-
-                translation = torch.cat([self.x, self.y, self.z])
-                T = translation[None, :]
-                image = self.renderer(meshes_world=self.meshes, R=R, T=T, extra_mask=None)
-            return image
-
-        def forward(self):
+    def render(self):
+        with torch.no_grad():
             axis_angles = torch.cat([self.angle_x, self.angle_y, self.angle_z])
             R = axis_angle_to_matrix(axis_angles[None, :])
 
             translation = torch.cat([self.x, self.y, self.z])
             T = translation[None, :]
+            image = self.renderer(meshes_world=self.meshes, R=R, T=T, extra_mask=None)
+        return image
 
-            down_offset = torch.cat([self.dist_x, self.dist_y, self.dist_z])
-            meshes = join_meshes_as_batch([self.up_mesh, self.down_mesh.offset_verts(down_offset)], include_textures=False)
-            
-            image, zbuf_mask = self.renderer(meshes_world=meshes.clone(), R=R, T=T, extra_mask=None)  
-            # image = torch.where(image != 0, torch.ones_like(image), image)
-            image = image * self.mouth_mask
-                      
-            im = image.view(image.shape[0],1,*image.shape[1:3])
-            
-            im = smile_utils.erode(smile_utils.dilate(im))
-            im = smile_utils.dilate(im-smile_utils.erode(im))
-            im = torch.sum(im, 0).clip(0,1)
-            
-            label = smile_utils.dilate(self.image_ref[None])
-            pred = smile_utils.dilate(im)
+    def forward(self):
+        axis_angles = torch.cat([self.angle_x, self.angle_y, self.angle_z])
+        R = axis_angle_to_matrix(axis_angles[None, :])
 
-            loss = torch.sum(((pred - label)) ** 2)
-            return loss, im, R, T, down_offset
+
+        translation = torch.cat([self.x, self.y, self.z])
+        T = translation[None, :]
+
+        down_offset = torch.cat([self.dist_x, self.dist_y, self.dist_z])
+        meshes = join_meshes_as_batch([self.up_mesh, self.down_mesh.offset_verts(down_offset)], include_textures=False)
+        
+        image, zbuf_mask = self.renderer(meshes_world=meshes.clone(), R=R, T=T, extra_mask=None)  
+        # image = torch.where(image != 0, torch.ones_like(image), image)
+        # image = image * self.mouth_mask
+                    
+        im = image.view(image.shape[0],1,*image.shape[1:3])
+        
+        im = smile_utils.erode(smile_utils.dilate(im))
+        im = smile_utils.dilate(im,) -im
+        im = smile_utils.dilate(torch.sum(im, 0).clip(0,1),3)
+        pred = im.clip(0,1)*self.mouth_mask
+        
+        label = self.image_ref[None]
+
+        loss = torch.sum(((pred - label)) ** 2)
+        return loss, pred, label, R, T, down_offset
     
+def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cuda'):
     step1 = step_list['step_0']
     teeth = smile_utils.load_teeth(tooth_dict, type='tooth', half=True, sample=True, voxel_size=1.0)
     
@@ -340,9 +342,9 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
     visible_area = mouth_mask
 
     image_ref = seg_res['edge']
-    up_mesh = smile_utils.apply_step(teeth, step1, mode='up', add=False, num_teeth=3)
+    up_mesh = smile_utils.apply_step(teeth, step1, mode='up', add=False, num_teeth=5)
     up_tensor = smile_utils.meshes_to_tensor(up_mesh, device=device)
-    down_mesh = smile_utils.apply_step(teeth, step1, mode='down', add=False, num_teeth=3)
+    down_mesh = smile_utils.apply_step(teeth, step1, mode='down', add=False, num_teeth=5)
     down_tensor = smile_utils.meshes_to_tensor(down_mesh, device=device)
     up_bbox = up_mesh[0].get_axis_aligned_bounding_box()
     ref_y, ref_z = up_bbox.min_bound[1], up_bbox.max_bound[2]
@@ -385,9 +387,9 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
               {'params': model.y, 'lr': 3e-4, 'name': 'y'},
               {'params': model.z, 'lr': 3e-4, 'name': 'z'},
 
-              {'params': model.dist_x, 'lr': 3e-7, 'name': 'dist_y'},
-              {'params': model.dist_y, 'lr': 3e-7, 'name': 'dist_y'},
-              {'params': model.dist_z, 'lr': 3e-7, 'name': 'dist_y'},
+              {'params': model.dist_x, 'lr': 3e-5, 'name': 'dist_y'},
+              {'params': model.dist_y, 'lr': 3e-5, 'name': 'dist_y'},
+              {'params': model.dist_z, 'lr': 3e-5, 'name': 'dist_y'},
 
               {'params': model.focal_length, 'lr': 1e-5, 'name': 'focal_length'}]
 
@@ -396,20 +398,23 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
         lr=1e-3, momentum=0.1)
 
     min_loss = np.Inf
-    gif_images = []
-    start = time.time()
+
+    output_file = 'output.gif'
+    out = []
     for i in range(1000):
         optimizer.zero_grad()
-        loss, teeth_mask, R, T, dist = model()
-        # print(loss, R, T, dist)
-        # if i % 10 == 0:
-        #     teeth_mask = teeth_mask.detach().cpu().numpy()
-        #     diff = np.zeros((256, 256, 3), dtype=np.float32)
-        #     diff[..., 0] = teeth_mask
-        #     diff[..., 1] = image_ref
-        #     gif_images.append((diff * 255).astype(np.uint8))
-        
+        loss, pred, label, R, T, dist = model()
+
+        if i % 10==0:
+            pred = pred.detach().cpu().numpy()
+            label = label.detach().cpu().numpy()
+
+            diff = np.zeros((256, 256, 3), dtype=np.float32)
+            diff[..., 0] = pred
+            diff[..., 1] = label
+            out.append((diff*255).astype(np.uint8))
         if loss.item() < min_loss:
+            # T[0,2] += 50
             best_opts = {
                 'focal_length': model.focal_length.detach().clone(),
                 'R': R.detach().clone(),
@@ -423,12 +428,17 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
             break
         loss.backward()
         optimizer.step()
+    
     if save_path is not None:
+        print(len(out))
+        imageio.mimsave(os.path.join(save_path, output_file), out, duration=100)
+
         torch.save(best_opts, os.path.join(save_path, 'para.pt'))
-    # imageio.mimsave('optimization.gif', gif_images, duration=100)
-    # print(loss.item())
-    # if loss.item()>1200 or up_mask.sum()<1200:
     return 0,0,0,False
+
+def render_target(teeth, step):
+    device = 'cuda:0'
+    best_opts = torch.load('')
     opt_cameras = PerspectiveCameras(device=device, focal_length=best_opts['focal_length'])
     lights = PointLights(device=device, ambient_color=((0.9, 0.9, 0.9),), location=[[2.0, -60.0, -12.0]])
     edge_renderer = MeshRenderer(
@@ -441,7 +451,6 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
                 cull_backfaces=True,
             )
         ),
-        # shader=EdgeShader()
         shader=HardPhongShader(device=device, cameras=opt_cameras, lights=lights,blend_params=BlendParams(sigma=1e-4, gamma=1e-4, background_color=(0., 0., 0.)))
     )
 
@@ -450,32 +459,26 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cpu'):
     depth_dict = {}
     id_dict = {}
     start = time.time()
-    for step_idx in step_list.keys():
-        step_array = step_list[step_idx]
-        # step = utils.load_step_file(step_array)
-        step = step_array
-        up_mesh = smile_utils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
-        up_tensor = smile_utils.meshes_to_tensor(up_mesh,'scene', device=device)
-        down_mesh = smile_utils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
-        down_tensor = smile_utils.meshes_to_tensor(down_mesh,'scene', device=device)
 
-        mid = len(up_mesh)
+    up_mesh = smile_utils.apply_step(teeth, step, mode='up', add=False, num_teeth=6)
+    up_tensor = smile_utils.meshes_to_tensor(up_mesh,'scene', device=device)
+    down_mesh = smile_utils.apply_step(teeth, step, mode='down', add=False, num_teeth=6)
+    down_tensor = smile_utils.meshes_to_tensor(down_mesh,'scene', device=device)
 
-        with torch.no_grad():
-            R = best_opts['R']
-            T = best_opts['T']
-            dist = best_opts['dist']
-            dist[-1] = dist[-1]
-            
-            teeth_mesh = join_meshes_as_scene([up_tensor, down_tensor.offset_verts(dist)],
-                                              include_textures=True)
+    mid = len(up_mesh)
 
-            out_im = edge_renderer(meshes_world=teeth_mesh, R=R, T=T)
-            out_im = (255*out_im[0,:,:,:3]/out_im[0,:,:,:3].max()).detach().cpu().numpy().astype(np.uint8)
-
-        depth_dict[step_idx] = out_im
+    with torch.no_grad():
+        R = best_opts['R']
+        T = best_opts['T']
+        dist = best_opts['dist']
+        dist[-1] = dist[-1]
         
-        # id_dict[step_idx] = down_edge
+        teeth_mesh = join_meshes_as_scene([up_tensor, down_tensor.offset_verts(dist)],
+                                            include_textures=True)
+
+        out_im = edge_renderer(meshes_world=teeth_mesh, R=R, T=T)
+        out_im = (255*out_im[0,:,:,:3]/out_im[0,:,:,:3].max()).detach().cpu().numpy().astype(np.uint8)
+
     return edge_dict, depth_dict, id_dict, True
 
 def render(params, tooth_dict, step_list, **kwargs):
@@ -557,22 +560,8 @@ class predictor(object):
         pass
     def predict(self, face_img: np.array, tooth_dict, step_list, save_path=None):
         seg_res = detection_and_segmentation(face_img, save_path)
-        edge_dict, depth_dict, id_dict, yep = fitting(seg_res, tooth_dict, step_list, save_path, device='cuda')
-        if not yep:
-            return None
-        a = depth_dict['step_0']
-        b = seg_res['mouth_img'][...,::-1]
-        c = seg_res['mouth_mask']
-        d = blend_images(a,b,0.7)
-        e = seg_res['edge']
-        f = seg_res['up_mask']
-
-        return a,b,c,d,e,f
-
-        smile_img_list = smile_generation_based_on_edge(seg_res, edge_dict, depth_dict, id_dict)
-        torch.cuda.empty_cache()
-        return smile_img_list, edge_dict
-  
+        fitting(seg_res, tooth_dict, step_list, save_path, device='cuda')
+        return
   
 def visualize_teeth(face_img, tooth_dict, step_list):
     import trimesh
@@ -582,67 +571,7 @@ def visualize_teeth(face_img, tooth_dict, step_list):
     up_mesh = smile_utils.trimesh_load_apply(tooth_dict, step1)
     up_mesh[11].show()
 
-
-def test():
-    def load_teeth_step(img_folder):
-        tooth_dict = {int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'models', '*._Root.stl'))}
-        steps_dict = {}
-        step_one_dict = {}
-        
-        step_list = natsorted(glob.glob(img_folder+'/models/*.txt'))
-        for arr in np.loadtxt(step_list[0]):
-            trans = np.eye(4,4)
-            trans[:3,3] = arr[1:4]
-            trans[:3,:3] = R.from_quat(arr[-4:]).as_matrix()
-            step_one_dict[str(int(arr[0]))] = trans
-        steps_dict['step_0'] = step_one_dict
-        return steps_dict, tooth_dict
-    smile = predictor()
-    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
-    with open('/mnt/d/data/smile/error.txt', 'r') as f:
-        error_list = [line.strip() for line in f.readlines()]
-    for case in tqdm(natsort.natsorted(os.listdir(path)[:3000])):
-        # case = 'C01002721541'
-        # case = '0b01e19ba8f3daa5aed0653dd253a78e'
-        img_folder = os.path.join(path,case)
-        if not os.path.exists(os.path.join(img_folder, '微笑像.jpg')) or case in error_list:
-            continue
-        try:
-            face_img = np.array(Image.open(os.path.join(img_folder, '微笑像.jpg')))
-        except:
-            print('img', case)
-
-        steps_dict, tooth_dict = load_teeth_step(img_folder)
-        save_path = os.path.join('/mnt/d/data/smile/out',case)
-        os.makedirs(save_path, exist_ok=True)
-        try:
-            res = smile.predict(face_img, tooth_dict, steps_dict, save_path)
-            if res is None:
-                continue
-        # a,b,c,d,e,f = res
-        # cv2.imwrite(os.path.join(save_path, 'teeth_3d.png'), a)
-        # cv2.imwrite(os.path.join(save_path, 'mouth.png'), b)
-        # cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
-        # cv2.imwrite(os.path.join('/mnt/d/data/smile/show', f'{case}.png'), d)
-        # cv2.imwrite(os.path.join(save_path, 'edge.png'), e*255)
-        # cv2.imwrite(os.path.join(save_path, 'up_edge.png'), f*255)
-        # break  
-        except:
-            print(case)
-
-def test_single():
-    smile = predictor()
-    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
-
-    case = 'C01002721271'
-    # case = '0b01e19ba8f3daa5aed0653dd253a78e'
-    img_folder = os.path.join(path,case)
-    # if not os.path.exists(os.path.join(img_folder, '微笑像.jpg')) or os.path.exists(os.path.join(img_folder, 'modal', 'blend.png')):
-    #     continue
-    try:
-        face_img = np.array(Image.open(os.path.join(img_folder, '微笑像.jpg')))
-    except:
-        print('img', case)
+def load_teeth_step(img_folder):
     tooth_dict = {int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob.glob(os.path.join(img_folder, 'models', '*._Root.stl'))}
     steps_dict = {}
     step_one_dict = {}
@@ -654,14 +583,42 @@ def test_single():
         trans[:3,:3] = R.from_quat(arr[-4:]).as_matrix()
         step_one_dict[str(int(arr[0]))] = trans
     steps_dict['step_0'] = step_one_dict
-    # try:
-    a,b,c,d = smile.predict(face_img, tooth_dict, steps_dict)
-    # save_path = os.path.join(img_folder, 'modal')
-    # os.makedirs(save_path, exist_ok=True)
-    # cv2.imwrite(os.path.join(save_path, 'teeth_3d.png'), a)
-    # cv2.imwrite(os.path.join(save_path, 'mouth.png'), b)
-    # cv2.imwrite(os.path.join(save_path, 'mouth_mask.png'), c*255)
-    # cv2.imwrite(os.path.join(save_path, 'blend.png'), d)
+    return steps_dict, tooth_dict
+
+def test():
+
+    smile = predictor()
+    path = '/mnt/d/data/smile/out'
+
+    for case in tqdm(natsort.natsorted(os.listdir(path)[:3000])):
+        # case = '0b01e19ba8f3daa5aed0653dd253a78e'
+        img_folder = os.path.join('/mnt/d/data/smile/Teeth_simulation_10K/',case)
+        steps_dict, tooth_dict = load_teeth_step(img_folder)
+        save_path = os.path.join('/mnt/d/data/smile/out',case)
+
+        seg_dict = {}
+        seg_dict['mouth_mask'] = cv2.imread(os.path.join(save_path,'mouth_mask.png'))[...,0]/255
+        seg_dict['edge'] = cv2.imread(os.path.join(save_path,'edge.png'))[...,0]/255
+        seg_dict['teeth_mask'] = cv2.imread(os.path.join(save_path,'teeth_mask.png'))[...,0]/255
+        seg_dict['up_mask'] = cv2.imread(os.path.join(save_path,'upper_edge.png'))[...,0]/255
+        fitting(seg_dict, tooth_dict, steps_dict, save_path)
+
+def test_single():
+    path = '/mnt/d/data/smile/Teeth_simulation_10K/'
+
+    case = 'C01002745615'
+
+    img_folder = os.path.join(path,case)
+    steps_dict, tooth_dict = load_teeth_step(img_folder)
+    save_path = os.path.join('/mnt/d/data/smile/out',case)
+    os.makedirs(save_path, exist_ok=True)
+    seg_dict = {}
+    seg_dict['mouth_mask'] = cv2.imread(os.path.join(save_path,'mouth_mask.png'))[...,0]/255
+    seg_dict['edge'] = cv2.imread(os.path.join(save_path,'edge.png'))[...,0]/255
+    seg_dict['teeth_mask'] = cv2.imread(os.path.join(save_path,'teeth_mask.png'))[...,0]/255
+    seg_dict['up_mask'] = cv2.imread(os.path.join(save_path,'upper_edge.png'))[...,0]/255
+    fitting(seg_dict, tooth_dict, steps_dict, save_path)
+
+
 if __name__=="__main__":
-    teeth_mask = {'teeth_mask':cv2.imread('/mnt/d/data/smile/out/C01002721158/smile.png')}
-    render(0,0,0,teeth_mask=teeth_mask)    
+    test_single()  

@@ -47,7 +47,7 @@ class EdgeAndDepthShader(nn.Module):
         
         return out_im, zbuf_mask
 
-def get_target_teeth(img_folder, target_step):
+def get_target_teeth(img_folder, target_step, type='batch'):
     tooth_dict = smile_utils.load_teeth({int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob(os.path.join(img_folder, 'models', '*._Root.stl'))})
     step_one_dict = {}
     
@@ -58,9 +58,9 @@ def get_target_teeth(img_folder, target_step):
         step_one_dict[str(int(arr[0]))] = trans
         
     up_mesh = smile_utils.apply_step(tooth_dict, step_one_dict, mode='up', add=False, num_teeth=6)
-    up_tensor = smile_utils.meshes_to_tensor(up_mesh,'batch', device='cuda')
+    up_tensor = smile_utils.meshes_to_tensor(up_mesh,type, device='cuda')
     down_mesh = smile_utils.apply_step(tooth_dict, step_one_dict, mode='down', add=False, num_teeth=6)
-    down_tensor = smile_utils.meshes_to_tensor(down_mesh,'batch', device='cuda')
+    down_tensor = smile_utils.meshes_to_tensor(down_mesh,type, device='cuda')
     return up_tensor, down_tensor
 
 def get_renderer(output_type='EdgeAndDepth', device='cuda', focal_length=12):
@@ -96,7 +96,7 @@ def get_renderer(output_type='EdgeAndDepth', device='cuda', focal_length=12):
     )
     return renderer
    
-def render(case):
+def interface(case):
     teeth_mask = cv2.imread(f'/mnt/d/data/smile/out/{case}/teeth_mask.png')
     edge = cv2.imread(f'/mnt/d/data/smile/out/{case}/edge.png')
     
@@ -160,7 +160,33 @@ def render(case):
     torch.save(best_params, f'/mnt/d/data/smile/out/{case}/para.pt')
     return out_im
 
+def render_depth_mask(case, show=False):
+    teeth_mask = cv2.imread(f'/mnt/d/data/smile/out/{case}/teeth_mask.png')
+    
+    best_params = torch.load(f'/mnt/d/data/smile/out/{case}/para.pt')
+    up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}','step1.txt')
+    renderer = get_renderer('EdgeAndDepth', focal_length=best_params['focal_length'])
+    T = best_params['T']
+    T[0,2]+=50
+    dist = best_params['dist']
+    R = best_params['R']
+    with torch.no_grad():        
+        teeth_mesh = join_meshes_as_scene([up_tensor, down_tensor.offset_verts(dist)],
+                                            include_textures=True)
+
+        out_im, _ = renderer(meshes_world=teeth_mesh, R=R, T=T)
+        
+        depth = np.where(teeth_mask[...,0]==0, 0, out_im)
+        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/depth.png', depth)
+        if show:
+            cv2.imshow('mat',depth)
+            cv2.imshow('mat2',out_im)
+            cv2.waitKey(0)
+    return
+        
 if __name__=='__main__':
-    for case in os.listdir('/mnt/d/data/smile/out/'):
-        print(case)
-        render(case)
+    # interface('C01002745615')
+    render_depth_mask('C01002745615')
+    # for case in os.listdir('/mnt/d/data/smile/out/'):
+    #     print(case)
+    #     render_depth_mask(case)

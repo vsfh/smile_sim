@@ -17,6 +17,15 @@ def flip(x, dim):
                       -1, -1), ('cpu','cuda')[x.is_cuda])().long(), :]
     return x.view(xsize)
 
+def preprocess(img):
+    img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+    if len(img_resize.shape)==2:
+        img_resize = img_resize[:,:,None].repeat(1,1,3)
+    im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
+    im = torch.from_numpy(im)  # to torch
+    im = im.float()  # uint8 to fp16/32
+    im /= 255.0  # 0-255 to 0.0-1.0
+    return im
 
 class YangOldNew(Dataset):
     def __init__(self, mode='test'):
@@ -31,9 +40,7 @@ class YangOldNew(Dataset):
             
         for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
-            
-            # if os.path.exists(os.path.join(self.path, folder, 'modal', 'blend.png')):
-                # self.all_files.append(os.path.join(self.path, folder, 'modal'))
+
         print('total image:', len(self.all_files))
         self.mode = mode
         self.half = False
@@ -46,7 +53,7 @@ class YangOldNew(Dataset):
         img_folder = self.all_files[index]
         img = cv2.imread(os.path.join(img_folder, 'Img.jpg'))
         img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
-        im = self.preprocess(img)
+        im = preprocess(img)
         cond_im = img.copy()
         cond_im_2 = img.copy()
         
@@ -56,41 +63,69 @@ class YangOldNew(Dataset):
         eu = cv2.imread(os.path.join(img_folder, 'TeethEdgeUp.png'))
         mk = cv2.imread(os.path.join(img_folder, 'MouthMask.png'))
         tk = cv2.imread(os.path.join(img_folder, 'TeethMasks.png'))
-        cond[3] = self.preprocess(mk)[0]
+        cond[3] = preprocess(mk)[0]
         
         cond_im[tk==0]=0
         cond_im = self.aug(cond_im)
         img[tk!=0]=0
-        # cv2.imshow('img',cond_im)
-        # cv2.waitKey(0)
-        cond[-3:] = self.preprocess(cond_im)
+        cond[-3:] = preprocess(cond_im)
 
         cond_im_2[...,0][mk[...,0]!=0] = ed[...,0][mk[...,0]!=0]
         cond_im_2[...,1][mk[...,0]!=0] = eu[...,0][mk[...,0]!=0]     
         cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
-        cond[:3] = self.preprocess(cond_im_2)
+        cond[:3] = preprocess(cond_im_2)
         
         return {'images': im, 'cond':cond}
+     
+class GeneratedDepth(Dataset):
+    def __init__(self, mode='train'):
+        self.path = '/ssd/gregory/smile/out/'
+        
+        self.all_files = []
+        if mode=='test':
+            folder_list = os.listdir(self.path)[-9:]
+        else:
+            folder_list = os.listdir(self.path)[:-9]
+            
+        for folder in folder_list:
+            self.all_files.append(os.path.join(self.path, folder,))
 
-        # mask = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
-        # teeth_3d = cv2.imread(os.path.join(img_folder, 'teeth_3d.png'))
+        print('total image:', len(self.all_files))
+        self.mode = mode
+        self.half = False
+        self.aug = RandomPerspective(translate=0.05, degrees=5, scale=0.05)
+    
+    def __len__(self):
+        return len(self.all_files)
+    
+    def __getitem__(self, index):
+        img_folder = self.all_files[index]
+        img = cv2.imread(os.path.join(img_folder, 'smile.png'))
+        img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        im = preprocess(img)
+        cond_im = img.copy()
+        cond_im_2 = img.copy()
         
-        # mk = self.preprocess(mask)
-        # teeth_3d = self.preprocess(teeth_3d)
         
-        # cond = teeth_3d*mk+im*(1-mk)
-        # return {'images': im, 'cond':cond}
+        cond = torch.zeros((7,256,256))
+        ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
+        eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
+        mk = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
+        tk = cv2.imread(os.path.join(img_folder, 'depth.png'))
+        cond[3] = preprocess(mk)[0]
         
+        cond_im[tk==0]=0
+        cond_im = self.aug(cond_im)
+        img[tk!=0]=0
+        cond[-3:] = preprocess(cond_im)
+
+        cond_im_2[...,0][mk[...,0]!=0] = ed[...,0][mk[...,0]!=0]
+        cond_im_2[...,1][mk[...,0]!=0] = eu[...,0][mk[...,0]!=0]     
+        cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
+        cond[:3] = preprocess(cond_im_2)
         
-    def preprocess(self, img):
-        img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
-        if len(img_resize.shape)==2:
-            img_resize = img_resize[:,:,None].repeat(1,1,3)
-        im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
-        im = torch.from_numpy(im)  # to torch
-        im = im.half() if self.half else im.float()  # uint8 to fp16/32
-        im /= 255.0  # 0-255 to 0.0-1.0
-        return im
+        return {'images': im, 'cond':cond}   
+
 
 
 from os.path import join as opj
@@ -135,16 +170,6 @@ class Tianshi(Dataset):
         return {'images': im, 'cond': cond}
         
         # return {'images': im, 'mask': mk, 'edge':ed, 'tmask':tk}
-        
-    def preprocess(self, img):
-        img_resize = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
-        if len(img_resize.shape)==2:
-            img_resize = img_resize[:,:,None].repeat(1,1,3)
-        im = np.ascontiguousarray(img_resize.transpose((2, 0, 1))[::-1])  # HWC to CHW -> BGR to RGB -> contiguous
-        im = torch.from_numpy(im)  # to torch
-        im = im.half() if self.half else im.float()  # uint8 to fp16/32
-        im /= 255.0  # 0-255 to 0.0-1.0
-        return im
     
 def mask_proc(mask, dilate=True):
         mask = np.array(mask)/255
