@@ -91,6 +91,25 @@ def convert_wo_to_onnx():
     torch.onnx.export(model, (input1, input2), output_path, export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=13, dynamic_axes=dynamic_axes)
     
+def convert_to_libtorch():
+    from script.control_gan import ControlModel
+    model = ControlModel(256,512,8,export=True).eval().cuda()
+    model.load_state('/mnt/share/shenfeihong/weight/smile-sim/2023.6.25/040000.pt')
+    output_path = '/mnt/e/share/to_b_gan.pt'
+    input1 = torch.randn(1,3,256,256).cuda()
+    module = torch.jit.trace(model, (input1))
+    module.save(output_path)
+    
+    # output_path = '/mnt/e/share/wo_edge_gan.pt'
+    # input1 = torch.randn(1, 3, 256, 256).float().cuda()
+    # input2 = torch.randn(1, 1, 256, 256).float().cuda()
+    # model = Gen_wo_edge().eval().cuda()
+    # ckpt_decoder_ = torch.load('/mnt/share/shenfeihong/weight/smile-sim/2023.1.19/230000.pt', map_location=lambda storage, loc: storage)
+    # model.decoder.load_state_dict(ckpt_decoder_["g_ema"])
+    
+    # module = torch.jit.trace(model, (input1, input2))
+    # module.save(output_path)
+    
 import cv2
 import numpy as np
 import onnxruntime
@@ -174,5 +193,7 @@ def model_infer():
     align_img = model(img, mask, big_mask)
     align_img = align_img[0].detach().cpu().numpy().transpose(1,2,0)*255/2+255/2
     cv2.imwrite('img.jpg', cv2.cvtColor(align_img, cv2.COLOR_RGB2BGR).astype(np.uint8))
-# convert_wo_to_onnx()
-onnx_infer()
+
+if __name__=='__main__':
+    # convert_wo_to_onnx()
+    convert_to_libtorch()

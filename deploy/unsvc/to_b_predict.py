@@ -323,7 +323,7 @@ class Model(nn.Module):
         loss = torch.sum(((pred - label)) ** 2)
         return loss, pred, label, R, T, down_offset
     
-def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cuda'):
+def fitting(seg_res, tooth_dict, step_list, save_path=None, save_gif=True, device='cuda'):
     step1 = step_list['step_0']
     teeth = smile_utils.load_teeth(tooth_dict, type='tooth', half=True, sample=True, voxel_size=1.0)
     
@@ -336,10 +336,6 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cuda'):
                                          kernel=cv2.getStructuringElement(cv2.MORPH_RECT, (19, 19)))
     closed_up_teeth_mask = cv2.morphologyEx(up_mask, cv2.MORPH_CLOSE,
                                          kernel=cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25)))
-
-
-
-    visible_area = mouth_mask
 
     image_ref = seg_res['edge']
     up_mesh = smile_utils.apply_step(teeth, step1, mode='up', add=False, num_teeth=5)
@@ -405,7 +401,7 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cuda'):
         optimizer.zero_grad()
         loss, pred, label, R, T, dist = model()
 
-        if i % 10==0:
+        if i % 10==0 and save_gif:
             pred = pred.detach().cpu().numpy()
             label = label.detach().cpu().numpy()
 
@@ -430,8 +426,8 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, device='cuda'):
         optimizer.step()
     
     if save_path is not None:
-        print(len(out))
-        imageio.mimsave(os.path.join(save_path, output_file), out, duration=100)
+        if save_gif:
+            imageio.mimsave(os.path.join(save_path, output_file), out, duration=100)
 
         torch.save(best_opts, os.path.join(save_path, 'para.pt'))
     return 0,0,0,False
