@@ -297,7 +297,7 @@ class GradualStyleEncoder(Module):
         if return_full: ##### modified
             feats += [c2, c2, c22, c21, c1, c128, c256]
             
-        return out, feats
+        return feats
 
     
     # only compute the first-layer feature f

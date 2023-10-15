@@ -14,6 +14,9 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import numpy as np
 from accelerate import Accelerator
+from accelerate.utils import DistributedDataParallelKwargs
+from accelerate.state import PartialState
+
 from utils import common, train_utils
 from criteria import id_loss, w_norm
 # from ex_dataset import ImagesDataset, TestDataset
@@ -46,7 +49,6 @@ class Coach:
         os.makedirs(log_dir, exist_ok=True)
         self.logger = SummaryWriter(log_dir=log_dir)
         
-        self.opts.device = 'cuda'
         # Initialize network
         if network=='unet':
             from stylegan2.model_cond import pSp
@@ -73,14 +75,6 @@ class Coach:
         # Initialize loss
         if self.opts.id_lambda > 0 and self.opts.moco_lambda > 0:
             raise ValueError('Both ID and MoCo loss have lambdas > 0! Please select only one to have non-zero lambda!')
-
-        self.mse_loss = nn.MSELoss().eval()
-        if self.opts.lpips_lambda > 0:
-            self.lpips_loss = LPIPS(net_type='alex')
-        if self.opts.id_lambda > 0:
-            self.id_loss = id_loss.IDLoss()
-        if self.opts.w_norm_lambda > 0:
-            self.w_norm_loss = w_norm.WNormLoss(start_from_latent_avg=self.opts.start_from_latent_avg)
             
         # Initialize optimizer
         optimizer = self.configure_optimizers(net)
@@ -108,7 +102,10 @@ class Coach:
         self.directions = None
         
 
-        self.accelerator = Accelerator()
+        kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        self.accelerator = Accelerator(kwargs_handlers=[kwargs])
+        self.state = PartialState()
+        
         optimizer, net, train_dataloader, test_dataloader = self.accelerator.prepare(optimizer, net, train_dataloader, test_dataloader)
         self.optimizer = optimizer
         self.net = net
@@ -118,7 +115,13 @@ class Coach:
             discriminator, discriminator_optimizer = self.accelerator.prepare(discriminator, discriminator_optimizer)
             self.discriminator = discriminator
             self.discriminator_optimizer = discriminator_optimizer
-        
+        self.mse_loss = nn.MSELoss().eval()
+        if self.opts.lpips_lambda > 0:
+            self.lpips_loss = self.accelerator.prepare(LPIPS(net_type='alex'))
+        if self.opts.id_lambda > 0:
+            self.id_loss = self.accelerator.prepare(id_loss.IDLoss())
+        if self.opts.w_norm_lambda > 0:
+            self.w_norm_loss = w_norm.WNormLoss(start_from_latent_avg=self.opts.start_from_latent_avg)
     def train(self):
         self.net.train()
         while self.global_step < self.opts.max_steps:
@@ -131,15 +134,14 @@ class Coach:
                 real_img = batch['images']
 
 
-                y_hat, latent = self.net.forward(cond_img, return_latents=True)      
-                # y_hat = y_hat*cond_img[:,2:3,:,:]+real_img*(1-cond_img[:,2:3,:,:])
+                y_hat = self.net.forward(cond_img, return_latents=False)      
                 
                 # adversarial loss
                 if self.opts.adv_lambda > 0: 
                     d_loss_dict = self.train_discriminator(real_img, y_hat)
                 
                 # calculate losses
-                loss, loss_dict, id_logs = self.calc_loss(cond_img[:,:3,:,:], real_img, y_hat, latent)
+                loss, loss_dict, id_logs = self.calc_loss(cond_img[:,:3,:,:], real_img, y_hat)
                 
                 if self.opts.adv_lambda > 0:
                     loss_dict = {**d_loss_dict, **loss_dict}
@@ -185,7 +187,7 @@ class Coach:
             real_img = batch['images']
 
             with torch.no_grad():
-                y_hat, latent = self.net.forward(cond_img, return_latents=True)                  
+                y_hat = self.net.forward(cond_img, return_latents=True)                  
             
             self.parse_and_log_images(cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat,
                                       title='test',
@@ -198,7 +200,7 @@ class Coach:
         save_name = 'best_model.pt' if is_best else f'iteration_{self.global_step}.pt'
         save_dict = self.__get_save_dict()
         checkpoint_path = os.path.join(self.checkpoint_dir, save_name)
-        torch.save(save_dict, checkpoint_path)
+        self.accelerator.save(save_dict, checkpoint_path)
         with open(os.path.join(self.checkpoint_dir, 'timestamp.txt'), 'a') as f:
             if is_best:
                 f.write(f'**Best**: Step - {self.global_step}, Loss - {self.best_val_loss} \n{loss_dict}\n')
@@ -220,13 +222,13 @@ class Coach:
     def configure_datasets(self):
         # train_dataset = YangOldNew('train')
         # test_dataset = YangOldNew('test')
-        train_dataset = GeneratedDepth('train')
-        test_dataset = GeneratedDepth('test')
+        train_dataset = GeneratedDepth(args.data_path, 'train')
+        test_dataset = GeneratedDepth(args.data_path, 'test')
         print(f"Number of training samples: {len(train_dataset)}")
         print(f"Number of test samples: {len(test_dataset)}")
         return train_dataset, test_dataset
 
-    def calc_loss(self, x, y, y_hat, latent, y0_hat=None):
+    def calc_loss(self, x, y, y_hat, y0_hat=None):
         loss_dict = {}
         loss = 0.0
         id_logs = None
@@ -251,10 +253,10 @@ class Coach:
             loss_l2_crop = F.mse_loss(y_hat[:, :, 35:223, 32:220], y[:, :, 35:223, 32:220])
             loss_dict['loss_l2_crop'] = float(loss_l2_crop)
             loss += loss_l2_crop * self.opts.l2_lambda_crop
-        if self.opts.w_norm_lambda > 0: 
-            loss_w_norm = self.w_norm_loss(latent, self.net.latent_avg)
-            loss_dict['loss_w_norm'] = float(loss_w_norm)
-            loss += loss_w_norm * self.opts.w_norm_lambda
+        # if self.opts.w_norm_lambda > 0: 
+        #     loss_w_norm = self.w_norm_loss(latent, self.net.latent_avg)
+        #     loss_dict['loss_w_norm'] = float(loss_w_norm)
+        #     loss += loss_w_norm * self.opts.w_norm_lambda
         if self.opts.moco_lambda > 0:
             loss_moco, sim_improvement, id_logs = self.moco_loss(y_hat, y, x)
             loss_dict['loss_moco'] = float(loss_moco)
@@ -308,12 +310,15 @@ class Coach:
         plt.close(fig)
 
     def __get_save_dict(self):
+        self.accelerator.wait_for_everyone()
+        unwrapped_model = self.accelerator.unwrap_model(self.net)
         save_dict = {
-            'state_dict': self.net.state_dict(),
+            'state_dict': unwrapped_model.state_dict(),
             'opts': vars(self.opts)
         }
         if self.opts.adv_lambda > 0:  ##### modified
-            save_dict['discriminator'] = self.discriminator.state_dict()
+            unwrapped_discriminator = self.accelerator.unwrap_model(self.net)
+            save_dict['discriminator'] = unwrapped_discriminator.state_dict()
         return save_dict             
             
 
@@ -461,6 +466,11 @@ if __name__=='__main__':
     args = opts.parse_args()
     args.exp_dir = '/ssd/gregory/smile/orthovis/10.8'
     args.stylegan_weights = '/ssd/gregory/smile/ori_style/checkpoint/150000.pt'
+    args.data_path = '/ssd/gregory/smile/out/'
+    args.exp_dir = '/data/shenfeihong/smile/orthovis/10.8'
+    args.stylegan_weights = '/data/shenfeihong/smile/ori_style/checkpoint/ori_style_150000.pt'
+    args.data_path = '/data/shenfeihong/smile/out/'
+    
     print(args)
     coach = Coach(args)
     coach.train()

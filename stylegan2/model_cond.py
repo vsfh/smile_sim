@@ -537,7 +537,7 @@ class Generator(nn.Module):
             truncation_latent=None,
             input_is_latent=False,
             noise=None,
-            randomize_noise=True,
+            randomize_noise=False,
             first_layer_feature = None, ##### modified
             first_layer_feature_ind = 0,  ##### modified
             skip_layer_feature = None,   ##### modified
@@ -625,26 +625,21 @@ class Generator(nn.Module):
 
         image = skip
 
-        if return_latents:
-            return image, latent
-        elif return_features:
-            return image, out
-        else:
-            return image, None
+        return image
 
 class pSp(nn.Module):
     def __init__(            
             self,opts=None):
         super(pSp, self).__init__()
         # compute number of style inputs based on the output resolution
-        self.n_styles = int(math.log(256, 2)) * 2 - 2
+        # self.n_styles = int(math.log(256, 2)) * 2 - 2
         # Define architecture
         self.encoder = GradualStyleEncoder(50, 'ir_se', use_skip=True, use_skip_torgb=True, input_nc=4)
         self.decoder = Generator(256, 512, 8)
         # self.load_state_dict(torch.load('/ssd/gregory/smile/orthovis/9.22/checkpoints/iteration_90000.pt')['state_dict'])
-        self.decoder.load_state_dict(torch.load('/ssd/gregory/smile/ori_style/checkpoint/150000.pt')['g_ema'])
+        self.decoder.load_state_dict(torch.load(opts.stylegan_weights)['g_ema'])
         
-        self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
+        # self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
 
     def forward(
             self,
@@ -659,26 +654,23 @@ class pSp(nn.Module):
         if styles is None:
             styles = [self.encoder(cond_img[:,-3:,:,:]*cond_img[:,2:3,:,:],return_feat=False, return_full=True)] ##### modified
             input_is_latent = True
-        _, feats = self.encoder(cond_img[:,:4,:,:], return_feat=True, return_full=True) ##### modified
+        feats = self.encoder(cond_img[:,:4,:,:], return_feat=True, return_full=True) ##### modified
         
-        first_layer_feats, skip_layer_feats, fusion = None, None, None ##### modified            
+        first_layer_feats, skip_layer_feats = None, None ##### modified            
 
         first_layer_feats = feats[0:2] # use f
         skip_layer_feats = feats[2:] # use skipped encoder feature
         if fusion_block is None:
             fusion_block = self.encoder.fusion # use fusion layer to fuse encoder feature and decoder feature.
-        images, result_latent = self.decoder(styles,
-                                             input_is_latent = input_is_latent,
-                                             return_latents=return_latents,
-                                             first_layer_feature=first_layer_feats,
-                                             first_layer_feature_ind=first_layer_feature_ind,
-                                             skip_layer_feature=skip_layer_feats,
-                                             fusion_block=fusion_block) ##### modified
+        images = self.decoder(styles,
+                                input_is_latent = input_is_latent,
+                                return_latents=return_latents,
+                                first_layer_feature=first_layer_feats,
+                                first_layer_feature_ind=first_layer_feature_ind,
+                                skip_layer_feature=skip_layer_feats,
+                                fusion_block=fusion_block) ##### modified
         images = images*(cond_img[:,3:4,:,:])+cond_img[:,:3,:,:]*(1-cond_img[:,3:4,:,:])
-        if return_latents:
-            return images, result_latent
-        else:
-            return images, None
+        return images
 
 
 

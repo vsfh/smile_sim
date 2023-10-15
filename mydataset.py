@@ -78,8 +78,8 @@ class YangOldNew(Dataset):
         return {'images': im, 'cond':cond}
      
 class GeneratedDepth(Dataset):
-    def __init__(self, mode='train'):
-        self.path = '/ssd/gregory/smile/out/'
+    def __init__(self, path='/ssd/gregory/smile/out/', mode='train'):
+        self.path = path
         
         self.all_files = []
         if mode=='test':
@@ -111,7 +111,7 @@ class GeneratedDepth(Dataset):
         ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
         eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
         mk = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
-        tk = cv2.imread(os.path.join(img_folder, 'depth.png'))
+        tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))
         cond[3] = preprocess(mk)[0]
         
         cond_im[tk==0]=0
