@@ -77,22 +77,23 @@ class YangOldNew(Dataset):
         
         return {'images': im, 'cond':cond}
      
+from natsort import natsorted
 class GeneratedDepth(Dataset):
     def __init__(self, path='/ssd/gregory/smile/out/', mode='train'):
         self.path = path
         
         self.all_files = []
         if mode=='test':
-            folder_list = os.listdir(self.path)[-9:]
+            folder_list = natsorted(os.listdir(self.path))[-9:]
         else:
-            folder_list = os.listdir(self.path)[:-9]
+            folder_list = natsorted(os.listdir(self.path))[:-9]
             
         for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
 
         print('total image:', len(self.all_files))
         self.mode = mode
-        self.half = False
+        self.show = True
         self.aug = RandomPerspective(translate=0.05, degrees=5, scale=0.05)
     
     def __len__(self):
@@ -108,10 +109,17 @@ class GeneratedDepth(Dataset):
         
         
         cond = torch.zeros((7,256,256))
-        ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
-        eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
+        if self.mode=='train':
+            tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))
+            ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
+            eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
+        else:
+            tk = cv2.imread(os.path.join(img_folder, 'step', 'depth.png'))
+            ed = cv2.imread(os.path.join(img_folder, 'step', 'down_edge.png'))
+            eu = cv2.imread(os.path.join(img_folder, 'step', 'up_edge.png'))
+            eu, ed = cv2.dilate(eu, kernel=np.ones((3,3))), cv2.dilate(ed, kernel=np.ones((3,3)))
+            tk[tk!=0]=255
         mk = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
-        tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))
         cond[3] = preprocess(mk)[0]
         
         cond_im[tk==0]=0
@@ -122,6 +130,12 @@ class GeneratedDepth(Dataset):
         cond_im_2[...,0][mk[...,0]!=0] = ed[...,0][mk[...,0]!=0]
         cond_im_2[...,1][mk[...,0]!=0] = eu[...,0][mk[...,0]!=0]     
         cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
+        if self.show:
+            print(img_folder)
+            cv2.imshow('cond1', cond_im)
+            cv2.imshow('cond2', cond_im_2)
+            cv2.waitKey(0)
+            
         cond[:3] = preprocess(cond_im_2)
         
         return {'images': im, 'cond':cond}   
@@ -297,7 +311,8 @@ def get_loader_unet(size =1, mode='train'):
 if __name__ == '__main__':
     # ds = SmileDataset(r'C:\data\smile_synthesis\smile_segmap', None)
     # ds = SimulationDataset(r'C:\data\smile_synthesis\smile_segmap', None)
-    ds = YangOldNew('train')
+    # ds = YangOldNew('train')
+    ds = GeneratedDepth('/mnt/d/data/smile/out', 'test')
 
     for batch in ds:
         cond = batch['cond']

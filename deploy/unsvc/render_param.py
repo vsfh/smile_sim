@@ -97,7 +97,7 @@ def deepmap_to_edgemap(teeth_gray, mid):
 
     return up_edge, down_edge
   
-def get_target_teeth(img_folder, target_step, type='batch', half=True):
+def get_target_teeth(img_folder, target_step, type='batch', half=False):
     tooth_dict = smile_utils.load_teeth({int(os.path.basename(p).split('/')[-1][:2]): trimesh.load(p) for p in glob(os.path.join(img_folder, 'models', '*._Root.stl'))},half=half)
     step_one_dict = {}
     
@@ -219,13 +219,13 @@ def interface(case):
     torch.save(best_params, f'/mnt/d/data/smile/out/{case}/para.pt')
     return out_im
 
-def render_depth_mask(case, show=False):
+def render_depth_mask(case, step_idx=-1, show=False):
     mouth_mask = cv2.imread(f'/mnt/d/data/smile/out/{case}/mouth_mask.png')
     
     best_params = torch.load(f'/mnt/d/data/smile/out/{case}/para.pt')
-    step_idx = [file for file in natsorted(os.listdir(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}')) if file.endswith('txt')][-1]
-    os.makedirs(f'/mnt/d/data/smile/out/{case}/{step_idx}', exist_ok=True)
-    up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}', step_idx, half=False)
+    step = [file for file in natsorted(os.listdir(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}')) if file.endswith('txt')][step_idx]
+    os.makedirs(f'/mnt/d/data/smile/out/{case}/step', exist_ok=True)
+    up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}', step, half=False)
     renderer = get_renderer('Depth', focal_length=best_params['focal_length'])
     T = best_params['T']
     T[0,2]+=50
@@ -238,7 +238,7 @@ def render_depth_mask(case, show=False):
         out_im, _ = renderer(meshes_world=teeth_mesh, R=R, T=T)
         
         depth = np.where(mouth_mask[...,0]==0, 0, out_im)
-        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/{step_idx}/depth.png', depth)
+        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/step/depth.png', depth)
         if show:
             cv2.imshow('mat',depth)
             cv2.imshow('mat2',out_im)
@@ -250,7 +250,7 @@ def render_edge(case, step_idx=-1, show=False):
     
     best_params = torch.load(f'/mnt/d/data/smile/out/{case}/para.pt')
     step = [file for file in natsorted(os.listdir(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}')) if file.endswith('txt')][step_idx]
-    os.makedirs(f'/mnt/d/data/smile/out/{case}/{step}', exist_ok=True)
+    os.makedirs(f'/mnt/d/data/smile/out/{case}/step', exist_ok=True)
     
     up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}', step, half=False)
     renderer = get_renderer('Edge', focal_length=best_params['focal_length'])
@@ -266,8 +266,8 @@ def render_edge(case, step_idx=-1, show=False):
 
         out_im[mouth_mask[...,0]==0]=0  
         up_edge, down_edge = deepmap_to_edgemap(out_im.detach().cpu().numpy(), up_tensor._N)
-        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/{step}/up_edge.png', up_edge)
-        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/{step}/down_edge.png', down_edge)
+        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/step/up_edge.png', up_edge)
+        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/step/down_edge.png', down_edge)
         
         if show:
             cv2.imshow('mat', up_edge)
@@ -278,7 +278,7 @@ def render_edge(case, step_idx=-1, show=False):
 def render_3d(case, step=-1, show=False):
     best_params = torch.load(f'/mnt/d/data/smile/out/{case}/para.pt')
     step_idx = [file for file in natsorted(os.listdir(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}')) if file.endswith('txt')][step]
-    os.makedirs(f'/mnt/d/data/smile/out/{case}/{step_idx}', exist_ok=True)
+    os.makedirs(f'/mnt/d/data/smile/out/{case}/step', exist_ok=True)
     up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}', step_idx, type='scene', half=False)
     renderer = get_renderer('HardPhong', focal_length=best_params['focal_length'])
     T = best_params['T']
@@ -294,12 +294,13 @@ def render_3d(case, step=-1, show=False):
         if show:
             cv2.imshow('mat', out_im)
             cv2.waitKey(0)
-        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/{step_idx}/3d.png', out_im)
+        cv2.imwrite(f'/mnt/d/data/smile/out/{case}/step/3d.png', out_im)
     return  
     
 if __name__=='__main__':
     # interface('C01002745615')
-    for case in os.listdir('/mnt/d/data/smile/out/'):
+    for case in natsorted(os.listdir('/mnt/d/data/smile/out/'))[-15:]:
+        # case = 'C01002757966'
         print(case)
         render_depth_mask(case)
         render_edge(case)

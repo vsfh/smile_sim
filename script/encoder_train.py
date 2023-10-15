@@ -187,7 +187,7 @@ class Coach:
             real_img = batch['images']
 
             with torch.no_grad():
-                y_hat = self.net.forward(cond_img, return_latents=True)                  
+                y_hat = self.net.forward(cond_img, return_latents=False)                  
             
             self.parse_and_log_images(cond_img[:,:3,:,:], real_img, cond_img[:,-3:,:,:], y_hat,
                                       title='test',

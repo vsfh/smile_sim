@@ -187,7 +187,7 @@ def load_gum(gum_dict, sample=True, voxel_size=0.2, export=False):
         
     return upper, lower
     
-def load_teeth(teeth_dict, type='tooth', half=True, sample=True, voxel_size=1.0):
+def load_teeth(teeth_dict, type='tooth', half=True, sample=False, voxel_size=1.0):
 
     teeth = {}
     for key, tooth in teeth_dict.items():

@@ -202,6 +202,10 @@ def erode(binary_image):
     eroded_image = F.conv2d(1-binary_image, erosion_kernel.view(binary_image.shape[0], 1, *erosion_kernel.shape), padding=7)
     eroded_image = 1-torch.where(eroded_image >= 1, torch.tensor(1.0), torch.tensor(0.0))
     return eroded_image
+
+def get_args():
+    checkpoint = torch.load('/mnt/e/share/weight/smile/iteration_250000.pt')
+    pass
 if __name__ == "__main__":
-    copy_file()
+    get_args()
     a = 1
