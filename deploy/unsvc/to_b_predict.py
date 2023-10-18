@@ -362,9 +362,9 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, save_gif=True, devic
 
     raster_settings = RasterizationSettings(
         image_size=256,
-        blur_radius=2e-3,
+        blur_radius=0,
         faces_per_pixel=25,
-        perspective_correct=False,
+        perspective_correct=True,
         cull_backfaces=True
     )
 
@@ -377,7 +377,7 @@ def fitting(seg_res, tooth_dict, step_list, save_path=None, save_gif=True, devic
 
     params = [{'params': model.angle_x, 'lr': 1e-7, 'name': 'angle_x'},
               {'params': model.angle_y, 'lr': 1e-7, 'name': 'angle_y'},
-              {'params': model.angle_z, 'lr': 1e-7, 'name': 'angle_z'},
+              {'params': model.angle_z, 'lr': 1e-4, 'name': 'angle_z'},
 
               {'params': model.x, 'lr': 3e-4, 'name': 'x'},
               {'params': model.y, 'lr': 3e-4, 'name': 'y'},
@@ -582,11 +582,9 @@ def load_teeth_step(img_folder):
     return steps_dict, tooth_dict
 
 def test():
-
-    smile = predictor()
     path = '/mnt/d/data/smile/out'
 
-    for case in tqdm(natsort.natsorted(os.listdir(path)[:3000])):
+    for case in tqdm(natsort.natsorted(os.listdir(path))[:15]):
         # case = '0b01e19ba8f3daa5aed0653dd253a78e'
         img_folder = os.path.join('/mnt/d/data/smile/Teeth_simulation_10K/',case)
         steps_dict, tooth_dict = load_teeth_step(img_folder)
@@ -617,4 +615,4 @@ def test_single():
 
 
 if __name__=="__main__":
-    test_single()  
+    test()  

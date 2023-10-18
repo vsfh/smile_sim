@@ -84,16 +84,16 @@ class GeneratedDepth(Dataset):
         
         self.all_files = []
         if mode=='test':
-            folder_list = natsorted(os.listdir(self.path))[-9:]
+            folder_list = natsorted(os.listdir(self.path))[:100]
         else:
-            folder_list = natsorted(os.listdir(self.path))[:-9]
+            folder_list = natsorted(os.listdir(self.path))[:100]
             
         for folder in folder_list:
             self.all_files.append(os.path.join(self.path, folder,))
 
         print('total image:', len(self.all_files))
         self.mode = mode
-        self.show = True
+        self.show = False
         self.aug = RandomPerspective(translate=0.05, degrees=5, scale=0.05)
     
     def __len__(self):
@@ -110,26 +110,30 @@ class GeneratedDepth(Dataset):
         
         cond = torch.zeros((7,256,256))
         if self.mode=='train':
-            tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))
             ed = cv2.imread(os.path.join(img_folder, 'down_edge.png'))
             eu = cv2.imread(os.path.join(img_folder, 'upper_edge.png'))
         else:
-            tk = cv2.imread(os.path.join(img_folder, 'step', 'depth.png'))
+            tk = cv2.imread(os.path.join(img_folder, 'step', 'depth.png'))    
             ed = cv2.imread(os.path.join(img_folder, 'step', 'down_edge.png'))
             eu = cv2.imread(os.path.join(img_folder, 'step', 'up_edge.png'))
-            eu, ed = cv2.dilate(eu, kernel=np.ones((3,3))), cv2.dilate(ed, kernel=np.ones((3,3)))
+            eu, ed, tk = cv2.dilate(eu, kernel=np.ones((3,3))), cv2.dilate(ed, kernel=np.ones((3,3))), cv2.dilate(tk, kernel=np.ones((3,3)))
             tk[tk!=0]=255
+        init_tk = cv2.imread(os.path.join(img_folder, 'teeth_mask.png'))    
         mk = cv2.imread(os.path.join(img_folder, 'mouth_mask.png'))
         cond[3] = preprocess(mk)[0]
         
-        cond_im[tk==0]=0
+        cond_im[init_tk==0]=0
         cond_im = self.aug(cond_im)
-        img[tk!=0]=0
+        img[init_tk!=0]=0
         cond[-3:] = preprocess(cond_im)
+        
 
         cond_im_2[...,0][mk[...,0]!=0] = ed[...,0][mk[...,0]!=0]
         cond_im_2[...,1][mk[...,0]!=0] = eu[...,0][mk[...,0]!=0]     
-        cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
+        if self.mode=='train':
+            cond_im_2[...,2][mk[...,0]!=0] = init_tk[...,0][mk[...,0]!=0] 
+        else:
+            cond_im_2[...,2][mk[...,0]!=0] = tk[...,0][mk[...,0]!=0] 
         if self.show:
             print(img_folder)
             cv2.imshow('cond1', cond_im)

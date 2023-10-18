@@ -1,4 +1,4 @@
-from control_gan import ControlModel
+# from control_gan import ControlModel
 import torch
 import cv2
 import numpy as np
@@ -194,6 +194,42 @@ def onnx_export():
     output_name = ['align_img']
     torch.onnx.export(model, (input1), 'model2.onnx', export_params=True, input_names=input_name, output_names=output_name,
                       opset_version=16, dynamic_axes=dynamic_axes)
+
+def test_pt():
+    import sys
+    sys.path.append('.')
+    sys.path.append('..')
+    from mydataset import GeneratedDepth
+    from torch.utils.data import DataLoader
+    from stylegan2.model_cond import pSp
+    from utils import common
+    from encoder_train import replace_batchnorm
+    ds = GeneratedDepth('/mnt/d/data/smile/out', 'test')
+    dl = DataLoader(ds,
+                    batch_size=2,
+                    shuffle=False,
+                    num_workers=0,
+                    drop_last=True)
+    net = pSp()
+    net = replace_batchnorm(net).eval().cuda()
+    checkpoint  = torch.load('/mnt/e/share/weight/smile/iteration_250000.pt')['state_dict']
+    net.load_state_dict(checkpoint)
+    agg_loss_dict = []
+    for batch_idx, batch in enumerate(dl):
+        cond_img = batch['cond']
+        real_img = batch['images']
+
+        with torch.no_grad():
+            y_hat = net.forward(cond_img.cuda(), return_latents=False)                  
+        
+        img = common.tensor2im(y_hat[0])
+        real_img = common.tensor2im(cond_img[0][:3,...])
+        
+        img.save(f'/mnt/e/share/save/{batch_idx}_train.png')
+        real_img.save(f'/mnt/e/share/save/{batch_idx}_test.png')
+        
+        
+        
 if __name__=='__main__':
 
-    test_onnx()
+    test_pt()

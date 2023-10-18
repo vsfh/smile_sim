@@ -118,9 +118,9 @@ def get_renderer(output_type='EdgeAndDepth', device='cuda', focal_length=12):
     if 'Depth' == output_type:
         raster_settings = RasterizationSettings(
             image_size=256,
-            blur_radius=2e-3,
+            blur_radius=0,
             faces_per_pixel=25,
-            perspective_correct=False,
+            perspective_correct=True,
             cull_backfaces=True
         )
         blend_params=BlendParams(sigma=1e-6, gamma=1e-2, background_color=(0., 0., 0.))
@@ -128,9 +128,9 @@ def get_renderer(output_type='EdgeAndDepth', device='cuda', focal_length=12):
     if 'Edge' == output_type:
         raster_settings = RasterizationSettings(
             image_size=256,
-            blur_radius=2e-3,
+            blur_radius=0,
             faces_per_pixel=25,
-            perspective_correct=False,
+            perspective_correct=True,
             cull_backfaces=True
         )
         blend_params=BlendParams(sigma=1e-6, gamma=1e-2, background_color=(0., 0., 0.))
@@ -161,9 +161,9 @@ def interface(case):
     
     best_params = torch.load(f'/mnt/d/data/smile/out/{case}/para.pt')
     up_tensor, down_tensor = get_target_teeth(f'/mnt/d/data/smile/Teeth_simulation_10K/{case}','step1.txt')
-    renderer = get_renderer('HardPhong', focal_length=best_params['focal_length'])
     T = best_params['T']
     dist = best_params['dist']
+    focal_length=12
 
     d = 100
     a = 97
@@ -179,12 +179,13 @@ def interface(case):
     angle = 0
     while True:
         with torch.no_grad():
-            axis_angles = torch.cat([torch.tensor([0], dtype=torch.float32), torch.tensor([angle], dtype=torch.float32), torch.tensor([0], dtype=torch.float32)],0).cuda()
+            axis_angles = torch.cat([torch.tensor([0], dtype=torch.float32), torch.tensor([0], dtype=torch.float32), torch.tensor([angle], dtype=torch.float32)],0).cuda()
             R_ = axis_angle_to_matrix(axis_angles[None, :])
             R = R_@best_params['R']
             
             teeth_mesh = join_meshes_as_scene([up_tensor, down_tensor.offset_verts(dist)],
                                                 include_textures=True)
+            renderer = get_renderer('HardPhong', focal_length=focal_length)
 
             out_im = renderer(meshes_world=teeth_mesh, R=R, T=T)
             out_im = (edge/2+(255/2*out_im[0,:,:,:3]/out_im[0,:,:,:3].max()).detach().cpu().numpy()).astype(np.uint8)
@@ -204,17 +205,19 @@ def interface(case):
             if key==k:
                 T[0,2] -= 5
             if key==n:
-                angle += 3/180
+                focal_length += 0.1
             if key==m:
-                angle -= 3/180
+                focal_length -= 0.1
+
             if key==u:
-                dist[1] += 2
+                angle += 2/180
             if key==i:
-                dist[1] -= 2
+                angle -= 2/180
             if key==enter:
                 best_params['T'] = T
                 best_params['R'] = R
                 best_params['dist'] = dist
+                best_params['focal_length'] = focal_length
                 break
     torch.save(best_params, f'/mnt/d/data/smile/out/{case}/para.pt')
     return out_im
@@ -298,10 +301,11 @@ def render_3d(case, step=-1, show=False):
     return  
     
 if __name__=='__main__':
-    # interface('C01002745615')
-    for case in natsorted(os.listdir('/mnt/d/data/smile/out/'))[-15:]:
-        # case = 'C01002757966'
+    # interface('C01002721192')
+    for case in natsorted(os.listdir('/mnt/d/data/smile/out/'))[:15]:
+        # case = 'C01002721192'
         print(case)
+        interface(case)
         render_depth_mask(case)
         render_edge(case)
         render_3d(case)
